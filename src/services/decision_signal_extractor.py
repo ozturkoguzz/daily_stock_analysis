@@ -77,6 +77,12 @@ def build_decision_signal_payload_from_report(
     )
     action = action_fields.get("action")
     if not action:
+        logger.warning(
+            "Decision signal skipped: no action derivable stock_code=%s score=%s advice=%r",
+            getattr(result, "code", None),
+            score,
+            (getattr(result, "operation_advice", None) or "")[:80],
+        )
         return None
 
     raw_code = str(getattr(result, "code", "") or "").strip()

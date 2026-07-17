@@ -462,3 +462,35 @@ def test_build_action_fields_none_score_stays_none():
         align_with_score=True,
     )
     assert fields["action"] is None
+
+
+def test_payload_extracted_for_english_us_report():
+    # A minimal AnalysisResult-shaped stub matching the MRVL production row that
+    # silently dropped: English advice, no explicit action, score 35, market US.
+    from types import SimpleNamespace
+    from src.services.decision_signal_extractor import (
+        build_decision_signal_payload_from_report,
+    )
+
+    result = SimpleNamespace(
+        success=True,
+        code="MRVL",
+        name="Marvell Technology, Inc.",
+        action=None,
+        operation_advice="For investors without a position, strictly stand aside.",
+        sentiment_score=35,
+        confidence_level="medium",
+        report_language="en",
+        analysis_summary="severe short-term technical damage",
+        dashboard={},
+    )
+    payload = build_decision_signal_payload_from_report(
+        result,
+        trace_id="test-trace",
+        query_source="test",
+        report_type="full",
+        profile_source="auto_default",
+    )
+    assert payload is not None
+    assert payload["action"] == "reduce"
+    assert payload["market"] == "us"
