@@ -431,3 +431,34 @@ def test_display_helpers_preserve_neutral_action_when_guardrail_was_applied() ->
     assert display_action_fields_for_result(result) == {"action": "hold", "action_label": "Hold"}
     assert display_operation_advice_for_result(result) == "Hold"
     assert display_decision_type_for_result(result) == "hold"
+
+
+def test_build_action_fields_supplies_action_from_score_when_unparseable():
+    # English prose advice is not parseable by normalize_decision_action, and
+    # explicit_action is None (the US/agent path). The score must still yield an action.
+    from src.schemas.decision_action import build_action_fields
+
+    fields = build_action_fields(
+        operation_advice="For investors without a position, strictly stand aside.",
+        explicit_action=None,
+        report_type="full",
+        report_language="en",
+        sentiment_score=35,
+        guardrail_reason=None,
+        align_with_score=True,
+    )
+    assert fields["action"] == "reduce"
+
+
+def test_build_action_fields_none_score_stays_none():
+    from src.schemas.decision_action import build_action_fields
+
+    fields = build_action_fields(
+        operation_advice="unparseable prose",
+        explicit_action=None,
+        report_type="full",
+        report_language="en",
+        sentiment_score=None,
+        align_with_score=True,
+    )
+    assert fields["action"] is None

@@ -386,10 +386,13 @@ def build_action_fields(
         if advice_text:
             action = normalize_decision_action(advice_text)
 
-    if align_with_score and score_action_conflicts_without_guardrail(
-        score=sentiment_score,
-        action=action,
-        guardrail_reason=guardrail_reason,
+    if align_with_score and (
+        action is None
+        or score_action_conflicts_without_guardrail(
+            score=sentiment_score,
+            action=action,
+            guardrail_reason=guardrail_reason,
+        )
     ):
         score_action = action_for_score(sentiment_score)
         if score_action in _ACTION_VALUES:
