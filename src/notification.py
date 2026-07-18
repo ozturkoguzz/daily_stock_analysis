@@ -815,13 +815,14 @@ class NotificationService(
             report_date = datetime.now().strftime('%Y-%m-%d')
         report_language = self._get_report_language(results)
         labels = get_report_labels(report_language)
+        colon = "：" if report_language == "zh" else ": "
 
         # 标题
         report_lines = [
             f"# 📅 {report_date} {labels['report_title']}",
             "",
             f"> {labels['analyzed_prefix']} **{len(results)}** {labels['stock_unit']} | "
-            f"{labels['generated_at_label']}：{datetime.now().strftime('%H:%M:%S')}",
+            f"{labels['generated_at_label']}{colon}{datetime.now().strftime('%H:%M:%S')}",
         ]
         self._append_market_status_line(report_lines, results, report_language)
         report_lines.extend(["---", ""])
@@ -871,10 +872,10 @@ class NotificationService(
                 report_lines.extend([
                     f"### {emoji} {self._get_display_name(result, report_language)} ({result.code})",
                     "",
-                    f"**{labels['action_advice_label']}：{signal_text}** | "
-                    f"**{labels['score_label']}：{result.sentiment_score}** | "
-                    f"**{labels['trend_label']}：{localize_trend_prediction(result.trend_prediction, report_language)}** | "
-                    f"**Confidence：{confidence_stars}**",
+                    f"**{labels['action_advice_label']}{colon}{signal_text}** | "
+                    f"**{labels['score_label']}{colon}{result.sentiment_score}** | "
+                    f"**{labels['trend_label']}{colon}{localize_trend_prediction(result.trend_prediction, report_language)}** | "
+                    f"**Confidence{colon}{confidence_stars}**",
                     "",
                 ])
                 self._append_market_snapshot(report_lines, result)
@@ -998,7 +999,7 @@ class NotificationService(
         # 底部信息（去除免责声明）
         report_lines.extend([
             "",
-            f"*{labels['generated_at_label']}：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*",
+            f"*{labels['generated_at_label']}{colon}{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*",
         ])
 
         return "\n".join(report_lines)
@@ -1166,6 +1167,7 @@ class NotificationService(
         config = get_config()
         report_language = self._get_report_language(results)
         labels = get_report_labels(report_language)
+        colon = "：" if report_language == "zh" else ": "
 
         def _nlabel(en: str, zh: str, ko: str) -> str:
             if report_language == "en":
@@ -1329,7 +1331,7 @@ class NotificationService(
                             else f"❌ {labels['no_label']}"
                         )
                         report_lines.extend([
-                            f"**{labels['ma_alignment_label']}**: {trend_data.get('ma_alignment', 'N/A')} | "
+                            f"**{labels['ma_alignment_label']}**: {translate_status(trend_data.get('ma_alignment', 'N/A'), report_language)} | "
                             f"{labels['bullish_alignment_label']}: {is_bullish} | "
                             f"{labels['trend_strength_label']}: {trend_data.get('trend_score', 'N/A')}/100",
                             "",
@@ -1496,11 +1498,11 @@ class NotificationService(
         # 底部（去除免责声明）
         report_lines.extend([
             "",
-            f"*{labels['generated_at_label']}：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*",
+            f"*{labels['generated_at_label']}{colon}{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*",
         ])
         models = self._collect_models_used(results)
         if models:
-            report_lines.append(f"*{labels['analysis_model_label']}：{', '.join(models)}*")
+            report_lines.append(f"*{labels['analysis_model_label']}{colon}{', '.join(models)}*")
 
         return "\n".join(report_lines)
 

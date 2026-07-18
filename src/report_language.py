@@ -248,6 +248,29 @@ _STATUS_TRANSLATIONS = {
         "今日内": "Today",
         "本周内": "This week",
         "不急": "Not urgent",
+        # TrendStatus enum values (src/stock_analyzer.py)
+        "强势多头": "Strong bullish",
+        "多头排列": "Bullish alignment",
+        "弱势多头": "Weak bullish",
+        "盘整": "Consolidation",
+        "弱势空头": "Weak bearish",
+        "空头排列": "Bearish alignment",
+        "强势空头": "Strong bearish",
+        # BuySignal enum values (src/stock_analyzer.py)
+        "强烈买入": "Strong buy",
+        "买入": "Buy",
+        "持有": "Hold",
+        "观望": "Watch",
+        "卖出": "Sell",
+        "强烈卖出": "Strong sell",
+        # ma_alignment composed phrases (src/stock_analyzer.py _analyze_trend)
+        "强势多头排列，均线发散上行": "Strong bullish alignment, MAs diverging upward",
+        "多头排列 MA5>MA10>MA20": "Bullish alignment: MA5 > MA10 > MA20",
+        "弱势多头，MA5>MA10 但 MA10≤MA20": "Weak bullish: MA5 > MA10, but MA10 ≤ MA20",
+        "强势空头排列，均线发散下行": "Strong bearish alignment, MAs diverging downward",
+        "空头排列 MA5<MA10<MA20": "Bearish alignment: MA5 < MA10 < MA20",
+        "弱势空头，MA5<MA10 但 MA10≥MA20": "Weak bearish: MA5 < MA10, but MA10 ≥ MA20",
+        "均线缠绕，趋势不明": "MAs intertwined, trend unclear",
     },
     # ko intentionally omitted -> falls through to passthrough
 }

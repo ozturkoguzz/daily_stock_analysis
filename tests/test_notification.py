@@ -1208,6 +1208,44 @@ class TestNotificationServiceReportGeneration(unittest.TestCase):
         self.assertNotIn("消息面", out)
 
     @mock.patch("src.notification.get_config")
+    def test_generate_dashboard_report_translates_ma_alignment_and_volume_status(
+        self, mock_get_config: mock.MagicMock
+    ):
+        mock_get_config.return_value = _make_config(report_renderer_enabled=False, report_language="en")
+        service = NotificationService()
+        result = AnalysisResult(
+            code="MRVL",
+            name="Marvell",
+            sentiment_score=65,
+            trend_prediction="Bullish",
+            operation_advice="Buy",
+            analysis_summary="Uptrend intact.",
+            decision_type="buy",
+            report_language="en",
+            dashboard={
+                "data_perspective": {
+                    "trend_status": {
+                        "ma_alignment": "强势多头排列，均线发散上行",
+                        "is_bullish": True,
+                        "trend_score": 90,
+                    },
+                    "volume_analysis": {
+                        "volume_ratio": 1.5,
+                        "volume_status": "放量上涨",
+                        "turnover_rate": 2.1,
+                    },
+                }
+            },
+        )
+
+        out = service.generate_dashboard_report([result], report_date="2026-03-20")
+
+        self.assertIn("Strong bullish alignment, MAs diverging upward", out)
+        self.assertIn("High volume, rising", out)
+        self.assertNotIn("强势多头排列", out)
+        self.assertNotIn("放量上涨", out)
+
+    @mock.patch("src.notification.get_config")
     def test_generate_single_stock_report_aligns_english_fallback_with_score(self, mock_get_config: mock.MagicMock):
         mock_get_config.return_value = _make_config(report_renderer_enabled=False, report_language="en")
         service = NotificationService()

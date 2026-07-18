@@ -28,6 +28,7 @@ from src.report_language import (
     localize_chip_health,
     localize_trend_prediction,
     normalize_report_language,
+    translate_status,
 )
 from src.storage import DatabaseManager
 from src.services.run_diagnostics import build_run_diagnostic_summary
@@ -985,7 +986,10 @@ class HistoryService:
         # ========== 核心结论 ==========
         core = dashboard.get('core_conclusion', {}) if dashboard else {}
         one_sentence = core.get('one_sentence', result.analysis_summary)
-        time_sense = core.get('time_sensitivity', labels['default_time_sensitivity'])
+        time_sense = translate_status(
+            core.get('time_sensitivity', labels['default_time_sensitivity']),
+            report_language,
+        )
         pos_advice = core.get('position_advice', {})
 
         report_lines.extend([
@@ -1031,7 +1035,7 @@ class HistoryService:
                     else f"❌ {labels['no_label']}"
                 )
                 report_lines.extend([
-                    f"**{labels['ma_alignment_label']}**: {trend_data.get('ma_alignment', 'N/A')} | "
+                    f"**{labels['ma_alignment_label']}**: {translate_status(trend_data.get('ma_alignment', 'N/A'), report_language)} | "
                     f"{labels['bullish_alignment_label']}: {is_bullish} | "
                     f"{labels['trend_strength_label']}: {trend_data.get('trend_score', 'N/A')}/100",
                     "",
@@ -1057,7 +1061,7 @@ class HistoryService:
             if vol_data:
                 report_lines.extend([
                     f"**{labels['volume_label']}**: {labels['volume_ratio_label']} {vol_data.get('volume_ratio', 'N/A')} "
-                    f"({vol_data.get('volume_status', '')}) | {labels['turnover_rate_label']} {vol_data.get('turnover_rate', 'N/A')}%",
+                    f"({translate_status(vol_data.get('volume_status', ''), report_language)}) | {labels['turnover_rate_label']} {vol_data.get('turnover_rate', 'N/A')}%",
                     f"💡 *{vol_data.get('volume_meaning', '')}*",
                     "",
                 ])
