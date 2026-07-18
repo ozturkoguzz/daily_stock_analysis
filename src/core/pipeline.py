@@ -32,6 +32,7 @@ from src.analyzer import (
     GeminiAnalyzer,
     AnalysisResult,
     fill_price_position_if_needed,
+    fill_volume_ratio_5d_if_needed,
     normalize_chip_structure_availability,
     populate_decision_action_fields,
     stabilize_decision_with_structure,
@@ -766,6 +767,7 @@ class StockAnalysisPipeline:
             # Step 7.7: price_position fallback
             if result:
                 fill_price_position_if_needed(result, trend_result, realtime_quote)
+                fill_volume_ratio_5d_if_needed(result, trend_result)
                 action_source_advice = getattr(result, "operation_advice", None)
                 stabilize_decision_with_structure(result, trend_result, fundamental_context)
                 adjustments = apply_phase_decision_guardrails(
@@ -950,6 +952,7 @@ class StockAnalysisPipeline:
                 'bias_ma10': trend_result.bias_ma10,
                 'volume_status': trend_result.volume_status.value,
                 'volume_trend': trend_result.volume_trend,
+                'volume_ratio_5d': trend_result.volume_ratio_5d,
                 'buy_signal': trend_result.buy_signal.value,
                 'signal_score': trend_result.signal_score,
                 'signal_reasons': trend_result.signal_reasons,
@@ -1462,6 +1465,7 @@ class StockAnalysisPipeline:
             # price_position fallback (same as non-agent path Step 7.7)
             if result:
                 fill_price_position_if_needed(result, trend_result, realtime_quote)
+                fill_volume_ratio_5d_if_needed(result, trend_result)
                 realtime_data = initial_context.get("realtime_quote", {})
                 if isinstance(realtime_data, dict):
                     result.current_price = realtime_data.get("price")

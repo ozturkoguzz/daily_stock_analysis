@@ -991,6 +991,47 @@ def fill_price_position_if_needed(
         logger.warning("[price_position] Fill failed, skipping: %s", e)
 
 
+def format_volume_ratio(realtime_ratio, volume_ratio_5d, label_5d) -> str:
+    """Show the realtime volume ratio when the provider supplies it; otherwise show the
+    daily 5-day ratio under an honest label. Never presents the daily metric as realtime."""
+    def _has(v):
+        return v is not None and str(v).strip().upper() not in {"N/A", "NA", "NONE", "NULL", ""}
+    if _has(realtime_ratio):
+        return str(realtime_ratio)
+    if _has(volume_ratio_5d):
+        try:
+            return f"{round(float(volume_ratio_5d), 2)} ({label_5d})"
+        except (TypeError, ValueError):
+            return f"{volume_ratio_5d} ({label_5d})"
+    return "N/A"
+
+
+def fill_volume_ratio_5d_if_needed(result: "AnalysisResult", trend_result: Any = None) -> None:
+    """Thread the daily 5-day volume ratio (StockTrendAnalyzer's volume_ratio_5d) into the
+    volume_analysis payload so the render layer can show an honest 5d-labeled ratio when the
+    realtime volume_ratio is null (e.g. yfinance on US tickers). Does not touch the realtime field."""
+    if not result or not trend_result:
+        return
+    try:
+        tr = trend_result if isinstance(trend_result, dict) else (
+            trend_result.__dict__ if hasattr(trend_result, "__dict__") else {}
+        )
+        volume_ratio_5d = tr.get("volume_ratio_5d")
+        if volume_ratio_5d is None:
+            return
+        if not result.dashboard:
+            result.dashboard = {}
+        dash = result.dashboard
+        dp = dash.get("data_perspective") or {}
+        dash["data_perspective"] = dp
+        va = dp.get("volume_analysis") or {}
+        dp["volume_analysis"] = va
+        if _is_value_placeholder(va.get("volume_ratio_5d")):
+            va["volume_ratio_5d"] = volume_ratio_5d
+    except Exception as e:
+        logger.warning("[volume_ratio_5d] Fill failed, skipping: %s", e)
+
+
 def stabilize_decision_with_structure(
     result: "AnalysisResult",
     trend_result: Any = None,
@@ -3778,12 +3819,13 @@ class GeminiAnalyzer:
         # 添加实时行情数据（量比、换手率等）
         if 'realtime' in context:
             rt = context['realtime']
+            volume_ratio_5d = context.get('trend_analysis', {}).get('volume_ratio_5d')
             prompt += f"""
 ### 实时行情增强数据
 | 指标 | 数值 | 解读 |
 |------|------|------|
 | 当前价格 | {rt.get('price', 'N/A')} 元 | |
-| **量比** | **{rt.get('volume_ratio', 'N/A')}** | {rt.get('volume_ratio_desc', '')} |
+| **量比** | **{format_volume_ratio(rt.get('volume_ratio'), volume_ratio_5d, '5日')}** | {rt.get('volume_ratio_desc', '')} |
 | **换手率** | **{rt.get('turnover_rate', 'N/A')}%** | |
 | 市盈率(动态) | {rt.get('pe_ratio', 'N/A')} | |
 | 市净率 | {rt.get('pb_ratio', 'N/A')} | |

@@ -37,6 +37,7 @@ from src.notification_noise import (
     record_notification_noise,
     release_notification_noise,
 )
+from src.analyzer import format_volume_ratio
 from src.report_language import (
     get_localized_stock_name,
     get_report_labels,
@@ -1347,7 +1348,9 @@ class NotificationService(
                     # 量能分析
                     if vol_data:
                         report_lines.extend([
-                            f"**{labels['volume_label']}**: {labels['volume_ratio_label']} {vol_data.get('volume_ratio', 'N/A')} ({vol_data.get('volume_status', '')}) | "
+                            f"**{labels['volume_label']}**: {labels['volume_ratio_label']} "
+                            f"{format_volume_ratio(vol_data.get('volume_ratio'), vol_data.get('volume_ratio_5d'), labels['volume_ratio_5d_label'])} "
+                            f"({vol_data.get('volume_status', '')}) | "
                             f"{labels['turnover_rate_label']} {vol_data.get('turnover_rate', 'N/A')}%",
                             f"💡 *{vol_data.get('volume_meaning', '')}*",
                             "",
