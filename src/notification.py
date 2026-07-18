@@ -47,6 +47,7 @@ from src.report_language import (
     localize_chip_health,
     localize_trend_prediction,
     normalize_report_language,
+    translate_status,
 )
 from src.schemas.decision_action import (
     display_action_fields_for_result,
@@ -1350,7 +1351,7 @@ class NotificationService(
                         report_lines.extend([
                             f"**{labels['volume_label']}**: {labels['volume_ratio_label']} "
                             f"{format_volume_ratio(vol_data.get('volume_ratio'), vol_data.get('volume_ratio_5d'), labels['volume_ratio_5d_label'])} "
-                            f"({vol_data.get('volume_status', '')}) | "
+                            f"({translate_status(vol_data.get('volume_status', ''), report_language)}) | "
                             f"{labels['turnover_rate_label']} {vol_data.get('turnover_rate', 'N/A')}%",
                             f"💡 *{vol_data.get('volume_meaning', '')}*",
                             "",

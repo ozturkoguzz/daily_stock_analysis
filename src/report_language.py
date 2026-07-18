@@ -226,6 +226,28 @@ _CHIP_UNAVAILABLE_REASON_KEYS = (
     "chip_unavailable",
 )
 
+# Chinese technical-status strings -> localized label. Keys are the raw .value
+# strings from stock_analyzer's VolumeStatus/RSIStatus enums and volume_trend text.
+_STATUS_TRANSLATIONS = {
+    "en": {
+        "放量上涨": "High volume, rising",
+        "放量下跌": "High volume, falling",
+        "缩量上涨": "Low volume, rising",
+        "缩量回调": "Shrinking-volume pullback",
+        "量能正常": "Normal volume",
+        "超买": "Overbought",
+        "强势买入": "Strong buy",
+        "中性": "Neutral",
+        "弱势": "Weak",
+        "超卖": "Oversold",
+        "放量上涨，多头力量强劲": "High volume, rising — bullish momentum strong",
+        "放量下跌，注意风险": "High volume, falling — caution advised",
+        "缩量上涨，上攻动能不足": "Low volume, rising — upward momentum weak",
+        "缩量回调，洗盘特征明显（好）": "Shrinking-volume pullback — healthy shakeout",
+    },
+    # ko intentionally omitted -> falls through to passthrough
+}
+
 _GENERIC_STOCK_NAME_BY_LANGUAGE = {
     "zh": "待确认股票",
     "en": "Unnamed Stock",
@@ -696,6 +718,16 @@ def get_no_data_text(language: Optional[str]) -> str:
 def get_chip_unavailable_text(language: Optional[str]) -> str:
     """Return the localized one-line chip distribution fallback text."""
     return _CHIP_UNAVAILABLE_BY_LANGUAGE[normalize_report_language(language)]
+
+
+def translate_status(text, language):
+    """Localize a Chinese technical-status string; unknown/zh text passes through."""
+    if not text:
+        return text
+    table = _STATUS_TRANSLATIONS.get(normalize_report_language(language))
+    if not table:
+        return text
+    return table.get(str(text).strip(), text)
 
 
 def _normalize_lookup_key(value: Any) -> str:
