@@ -999,7 +999,7 @@ class AgentOrchestrator:
                 position_advice["no_position"] = no_position
             if has_position and "has_position" not in position_advice:
                 position_advice["has_position"] = has_position
-        defaults = _default_position_advice(decision_type)
+        defaults = _default_position_advice(decision_type, ctx.meta.get("report_language", "zh"))
         position_advice.setdefault("no_position", defaults["no_position"])
         position_advice.setdefault("has_position", defaults["has_position"])
 
@@ -1568,8 +1568,8 @@ def _signal_to_signal_type(signal: str) -> str:
     return mapping.get(signal, "⚪观望信号")
 
 
-def _default_position_advice(signal: str) -> Dict[str, str]:
-    mapping = {
+_DEFAULT_POSITION_ADVICE = {
+    "zh": {
         "buy": {
             "no_position": "可结合支撑位分批试仓，避免一次性追高。",
             "has_position": "可继续持有，回踩关键位不破再考虑加仓。",
@@ -1582,8 +1582,29 @@ def _default_position_advice(signal: str) -> Dict[str, str]:
             "no_position": "暂不参与，等待风险充分释放。",
             "has_position": "优先控制回撤，按计划减仓或离场。",
         },
-    }
-    return mapping.get(signal, mapping["hold"])
+    },
+    "en": {
+        "buy": {
+            "no_position": "Scale in around support levels; avoid chasing in one go.",
+            "has_position": "Keep holding; consider adding only if key levels hold on a pullback.",
+        },
+        "hold": {
+            "no_position": "Don't chase; wait for a clearer entry setup.",
+            "has_position": "Stay in observation mode; act on risk control if the stop-loss level breaks.",
+        },
+        "sell": {
+            "no_position": "Stay out for now; wait for risk to fully play out.",
+            "has_position": "Prioritize drawdown control; reduce or exit per plan.",
+        },
+    },
+}
+
+
+def _default_position_advice(signal: str, language: str = "zh") -> Dict[str, str]:
+    lang_map = _DEFAULT_POSITION_ADVICE.get(
+        normalize_report_language(language), _DEFAULT_POSITION_ADVICE["zh"]
+    )
+    return lang_map.get(signal, lang_map["hold"])
 
 
 def _default_position_size(signal: str) -> str:

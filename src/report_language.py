@@ -244,6 +244,10 @@ _STATUS_TRANSLATIONS = {
         "放量下跌，注意风险": "High volume, falling — caution advised",
         "缩量上涨，上攻动能不足": "Low volume, rising — upward momentum weak",
         "缩量回调，洗盘特征明显（好）": "Shrinking-volume pullback — healthy shakeout",
+        "立即行动": "Act now",
+        "今日内": "Today",
+        "本周内": "This week",
+        "不急": "Not urgent",
     },
     # ko intentionally omitted -> falls through to passthrough
 }

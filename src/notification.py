@@ -1281,7 +1281,10 @@ class NotificationService(
                 # ========== 核心结论 ==========
                 core = dashboard.get('core_conclusion', {}) if dashboard else {}
                 one_sentence = core.get('one_sentence', result.analysis_summary)
-                time_sense = core.get('time_sensitivity', labels['default_time_sensitivity'])
+                time_sense = translate_status(
+                    core.get('time_sensitivity', labels['default_time_sensitivity']),
+                    report_language,
+                )
                 pos_advice = core.get('position_advice', {})
 
                 report_lines.extend([

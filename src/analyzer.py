@@ -116,6 +116,20 @@ def _localized_text(language: Any, *, en: str, zh: str, ko: str) -> str:
     return zh
 
 
+_TIME_SENSITIVITY_OPTIONS = {
+    "zh": "立即行动/今日内/本周内/不急",
+    "en": "Act now / Today / This week / Not urgent",
+    "ko": "즉시 행동/오늘 중/이번 주/급하지 않음",
+}
+
+
+def time_sensitivity_options(language: Any) -> str:
+    """Return the language-appropriate time-sensitivity options string for the prompt."""
+    return _TIME_SENSITIVITY_OPTIONS.get(
+        normalize_report_language(language), _TIME_SENSITIVITY_OPTIONS["zh"]
+    )
+
+
 def _normalize_risk_warning_values(value: Any) -> List[str]:
     """Normalize arbitrary risk_warning values into a flat list of text alerts."""
     if value is None:
@@ -1950,7 +1964,7 @@ class GeminiAnalyzer:
         "core_conclusion": {
             "one_sentence": "一句话核心结论（30字以内，直接告诉用户做什么）",
             "signal_type": "🟢买入信号/🟡持有观望/🔴卖出信号/⚠️风险警告",
-            "time_sensitivity": "立即行动/今日内/本周内/不急",
+            "time_sensitivity": "{time_sensitivity_options}",
             "position_advice": {
                 "no_position": "空仓者建议：具体操作指引",
                 "has_position": "持仓者建议：具体操作指引"
@@ -2138,7 +2152,7 @@ class GeminiAnalyzer:
         "core_conclusion": {
             "one_sentence": "一句话核心结论（30字以内，直接告诉用户做什么）",
             "signal_type": "🟢买入信号/🟡持有观望/🔴卖出信号/⚠️风险警告",
-            "time_sensitivity": "立即行动/今日内/本周内/不急",
+            "time_sensitivity": "{time_sensitivity_options}",
             "position_advice": {
                 "no_position": "空仓者建议：具体操作指引",
                 "has_position": "持仓者建议：具体操作指引"
@@ -2395,6 +2409,8 @@ class GeminiAnalyzer:
                 "{market_placeholder}", market_role
             ).replace(
                 "{guidelines_placeholder}", market_guidelines
+            ).replace(
+                "{time_sensitivity_options}", time_sensitivity_options(lang)
             )
         else:
             skills_section = ""
@@ -2408,6 +2424,7 @@ class GeminiAnalyzer:
                 .replace("{guidelines_placeholder}", market_guidelines)
                 .replace("{default_skill_policy_section}", default_skill_policy_section)
                 .replace("{skills_section}", skills_section)
+                .replace("{time_sensitivity_options}", time_sensitivity_options(lang))
             )
         if lang == "en":
             return base_prompt + """
