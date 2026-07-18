@@ -158,9 +158,17 @@ class AgentOrchestrator:
         if ctx is not None:
             dashboard, content = self._resolve_final_output(ctx, parse_dashboard=parse_dashboard)
             if parse_dashboard and dashboard is not None:
+                language = normalize_report_language(ctx.meta.get("report_language", "zh"))
+                note = (
+                    "Multi-agent pipeline timed out; the following conclusion was "
+                    "auto-degraded from completed stages."
+                    if language == "en"
+                    else "多 Agent 超时，以下结论基于已完成阶段自动降级生成。"
+                )
                 dashboard = self._mark_partial_dashboard(
                     dashboard,
-                    note="多 Agent 超时，以下结论基于已完成阶段自动降级生成。",
+                    note=note,
+                    language=language,
                 )
                 ctx.set_data("final_dashboard", dashboard)
                 content = json.dumps(dashboard, ensure_ascii=False, indent=2)
@@ -199,9 +207,17 @@ class AgentOrchestrator:
         if ctx is not None:
             dashboard, content = self._resolve_final_output(ctx, parse_dashboard=parse_dashboard)
             if parse_dashboard and dashboard is not None:
+                language = normalize_report_language(ctx.meta.get("report_language", "zh"))
+                note = (
+                    "Multi-agent budget insufficient; the following conclusion was "
+                    "auto-degraded from completed stages."
+                    if language == "en"
+                    else "多 Agent 预算不足，以下结论基于已完成阶段自动降级生成。"
+                )
                 dashboard = self._mark_partial_dashboard(
                     dashboard,
-                    note="多 Agent 预算不足，以下结论基于已完成阶段自动降级生成。",
+                    note=note,
+                    language=language,
                 )
                 ctx.set_data("final_dashboard", dashboard)
                 content = json.dumps(dashboard, ensure_ascii=False, indent=2)
@@ -1101,7 +1117,7 @@ class AgentOrchestrator:
         if not isinstance(data_perspective, dict):
             data_perspective = {}
         if not data_perspective:
-            built_data_perspective = self._build_data_perspective(ctx, key_levels)
+            built_data_perspective = self._build_data_perspective(ctx, key_levels, language)
             if built_data_perspective:
                 data_perspective = built_data_perspective
         if data_perspective:
@@ -1169,6 +1185,7 @@ class AgentOrchestrator:
         self,
         ctx: AgentContext,
         key_levels: Dict[str, Any],
+        language: str = "zh",
     ) -> Dict[str, Any]:
         """Build a lightweight data_perspective block from cached market data."""
         realtime = ctx.get_data("realtime_quote")
@@ -1191,6 +1208,16 @@ class AgentOrchestrator:
         def _bias_label(bias):
             if not isinstance(bias, (int, float)):
                 return ""
+            if language == "en":
+                if bias > 5:
+                    return "Overbought"
+                elif bias > 2:
+                    return "Elevated"
+                elif bias < -5:
+                    return "Oversold"
+                elif bias < -2:
+                    return "Low"
+                return "Neutral"
             if bias > 5:
                 return "超买"
             elif bias > 2:
@@ -1239,7 +1266,7 @@ class AgentOrchestrator:
                 "profit_ratio": chip.get("profit_ratio", "N/A"),
                 "avg_cost": chip.get("avg_cost", "N/A"),
                 "concentration": concentration if concentration is not None else "N/A",
-                "chip_health": chip.get("chip_health", "一般"),
+                "chip_health": chip.get("chip_health", "Average" if language == "en" else "一般"),
             }
 
         return data_perspective
@@ -1325,10 +1352,11 @@ class AgentOrchestrator:
         dashboard: Dict[str, Any],
         *,
         note: str,
+        language: str = "zh",
     ) -> Dict[str, Any]:
         tagged = dict(dashboard)
         summary = _first_non_empty_text(tagged.get("analysis_summary"))
-        prefix = "[降级结果] "
+        prefix = "[Degraded result] " if normalize_report_language(language) == "en" else "[降级结果] "
         if summary and not summary.startswith(prefix):
             tagged["analysis_summary"] = prefix + summary
         elif not summary:

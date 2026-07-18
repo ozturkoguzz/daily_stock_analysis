@@ -81,6 +81,52 @@ class TestNormalizeDashboardPayloadLanguage(unittest.TestCase):
         self.assertEqual(core["time_sensitivity"], "本周内")
 
 
+class TestMarkPartialDashboardLanguage(unittest.TestCase):
+    def test_degraded_prefix_is_english(self):
+        orch = _make_orchestrator()
+        tagged = orch._mark_partial_dashboard(
+            {"analysis_summary": "Momentum is flat."},
+            note="Multi-agent pipeline timed out.",
+            language="en",
+        )
+        self.assertTrue(tagged["analysis_summary"].startswith("[Degraded result]"))
+        self.assertNotRegex(tagged["analysis_summary"], r"[一-鿿]")
+
+    def test_degraded_prefix_is_chinese_by_default(self):
+        orch = _make_orchestrator()
+        tagged = orch._mark_partial_dashboard(
+            {"analysis_summary": "动量平稳。"},
+            note="多 Agent 超时，以下结论基于已完成阶段自动降级生成。",
+        )
+        self.assertTrue(tagged["analysis_summary"].startswith("[降级结果]"))
+
+
+class TestBuildDataPerspectiveLanguage(unittest.TestCase):
+    def test_bias_status_and_chip_health_are_english(self):
+        orch = _make_orchestrator()
+        ctx = AgentContext(query="test", stock_code="AAPL", stock_name="Apple")
+        ctx.meta["report_language"] = "en"
+        ctx.set_data("trend_result", {"bias_ma5": 8})
+        ctx.set_data("chip_distribution", {})
+
+        data_perspective = orch._build_data_perspective(ctx, {}, "en")
+
+        self.assertEqual(data_perspective["price_position"]["bias_status"], "Overbought")
+        self.assertEqual(data_perspective["chip_structure"]["chip_health"], "Average")
+
+    def test_bias_status_and_chip_health_are_chinese_by_default(self):
+        orch = _make_orchestrator()
+        ctx = AgentContext(query="test", stock_code="600000", stock_name="浦发银行")
+        ctx.meta["report_language"] = "zh"
+        ctx.set_data("trend_result", {"bias_ma5": 8})
+        ctx.set_data("chip_distribution", {})
+
+        data_perspective = orch._build_data_perspective(ctx, {})
+
+        self.assertEqual(data_perspective["price_position"]["bias_status"], "超买")
+        self.assertEqual(data_perspective["chip_structure"]["chip_health"], "一般")
+
+
 class TestRiskOverrideLanguage(unittest.TestCase):
     def _ctx_with_buy_veto(self, language: str) -> AgentContext:
         ctx = AgentContext(query="test", stock_code="AAPL", stock_name="Apple")
