@@ -476,6 +476,37 @@ def test_us_market_excludes_chip_from_overall_score_but_ashare_includes_it() -> 
     assert ashare_pack.data_quality.overall_score == 97
 
 
+def test_us_market_excludes_missing_news_from_overall_score_but_ashare_includes_it() -> None:
+    # US agent-mode news is fetched by the agent's search tool mid-run; a MISSING
+    # news block is a deferred-snapshot artifact, not a data gap, so it must not
+    # dock the US overall_score (mirrors the chip exclusion). A-share news is
+    # pre-fetched into the snapshot, so a missing block there is a real gap.
+    us_missing = AnalysisContextBuilder.build(
+        _artifacts(market="us", chip_data=None, news_context="  ", news_result_count=0)
+    )
+    assert us_missing.blocks["news"].status == ContextFieldStatus.MISSING
+    assert us_missing.data_quality.block_scores["news"] == 35  # still reported
+    # chip + missing-news both out of the denominator; every remaining block is
+    # AVAILABLE (100), so the US score is 100, not dragged by the deferred news.
+    assert us_missing.data_quality.overall_score == 100
+
+    ashare_missing = AnalysisContextBuilder.build(
+        _artifacts(market="cn", chip_data=None, news_context="  ", news_result_count=0)
+    )
+    # A-share weighs missing news (10) and missing chip (5) in:
+    # 100*(25+25+25+10) + 35*10 + 35*5 = 9025 / 100 -> 90
+    assert ashare_missing.data_quality.overall_score == 90
+
+
+def test_us_market_still_weighs_available_news_in_overall_score() -> None:
+    # Only the MISSING deferral artifact is excluded; genuinely available news
+    # must still count toward the US score.
+    us_available = AnalysisContextBuilder.build(_artifacts(market="us", chip_data=None))
+    assert us_available.blocks["news"].status == ContextFieldStatus.AVAILABLE
+    assert us_available.data_quality.block_scores["news"] == 100
+    assert us_available.data_quality.overall_score == 100
+
+
 def test_portfolio_block_is_auxiliary_and_does_not_change_quality_score() -> None:
     baseline = AnalysisContextBuilder.build(_artifacts())
     pack = AnalysisContextBuilder.build(

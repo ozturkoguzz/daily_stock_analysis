@@ -526,6 +526,7 @@ def _build_data_quality(
     market: Optional[str] = None,
 ) -> DataQuality:
     weights = _quality_block_weights_for_market(market)
+    is_us = _is_us_market(market)
     block_scores: Dict[str, int] = {}
     weighted_sum = 0
     total_weight = 0
@@ -534,6 +535,12 @@ def _build_data_quality(
         score = _STATUS_SCORES.get(status, _STATUS_SCORES[ContextFieldStatus.MISSING])
         block_scores[key] = score
         weight = weights[key]
+        # US news is fetched by the agent's search tool mid-run, so a MISSING
+        # news block is a deferred-snapshot artifact, not a data gap — drop it
+        # from the denominator (mirrors the chip exclusion). Available news, and
+        # all A-share/HK news, still count.
+        if is_us and key == "news" and status == ContextFieldStatus.MISSING:
+            weight = 0
         weighted_sum += score * weight
         total_weight += weight
 
