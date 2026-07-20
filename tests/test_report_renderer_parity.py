@@ -132,6 +132,26 @@ class TestTruncateTextWordBoundary(unittest.TestCase):
     def test_short_text_is_unchanged(self):
         self.assertEqual(_truncate_text("short", 60), "short")
 
+    def test_prefers_sentence_boundary_over_dangling_word(self):
+        # A complete sentence that fits should end the output cleanly — no "…"
+        # dangling on a trailing function word ("...marked by a…").
+        text = (
+            "JPM maintains a robust bullish structure. "
+            "However, short-term momentum has slowed, marked by a MACD death cross."
+        )
+        truncated = _truncate_text(text, 60)
+        self.assertEqual(truncated, "JPM maintains a robust bullish structure.")
+        self.assertFalse(truncated.endswith("…"))
+
+    def test_falls_back_to_word_boundary_when_no_sentence_fits(self):
+        # First sentence longer than the limit: no full sentence fits, so keep
+        # the word-boundary + ellipsis behaviour.
+        text = "JPM maintains a robust medium-term bullish moving-average structure overall"
+        truncated = _truncate_text(text, 30)
+        self.assertTrue(truncated.endswith("…"))
+        body = truncated[:-1].rstrip()
+        self.assertIn(text[len(body):len(body) + 1], ("", " "))
+
 
 if __name__ == "__main__":
     unittest.main()

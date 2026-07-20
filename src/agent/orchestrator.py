@@ -1777,6 +1777,14 @@ def _truncate_text(text: Any, limit: int) -> str:
         return value
     cutoff = max(0, limit - 1)
     truncated = value[:cutoff]
+    # Prefer ending at a complete sentence within the limit, so the one-liner
+    # reads as a finished thought rather than a dangling "...marked by a…".
+    last_sentence = max(
+        truncated.rfind(". "), truncated.rfind("! "), truncated.rfind("? ")
+    )
+    if last_sentence > 0:
+        return truncated[: last_sentence + 1].rstrip()
+    # No full sentence fits: fall back to a clean word boundary + ellipsis.
     last_space = truncated.rfind(" ")
     if last_space > 0:
         truncated = truncated[:last_space]
