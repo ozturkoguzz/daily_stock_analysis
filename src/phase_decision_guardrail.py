@@ -226,20 +226,57 @@ def _phase_context_from_summary(summary: Mapping[str, Any]) -> Dict[str, Any]:
     return {key: summary.get(key) for key in _PHASE_CONTEXT_KEYS if key in summary}
 
 
+_US_CLEAN_DAILY_TECHNICAL_MIN_SCORE = 90
+
+
 def _has_core_degraded_block(overview: Optional[Mapping[str, Any]]) -> bool:
     if not isinstance(overview, Mapping):
         return False
     blocks = overview.get("blocks")
     if not isinstance(blocks, list):
         return False
+
+    is_us = _safe_text(_nested_get(overview, "subject", "market")).lower() == "us"
     for block in blocks:
         if not isinstance(block, Mapping):
             continue
         key = _safe_text(block.get("key"))
         status = _safe_text(block.get("status"))
-        if key in CORE_DATA_BLOCKS and status in CORE_DEGRADED_STATUSES:
-            return True
+        if key not in CORE_DATA_BLOCKS or status not in CORE_DEGRADED_STATUSES:
+            continue
+        if is_us and key == "quote" and status == "fallback" and _us_daily_and_technical_are_clean(overview):
+            # US daily-horizon analysis relies on daily bars + technicals, not
+            # the realtime 量比/turnover that yfinance lacks. A clean daily
+            # dataset should not be forced to Medium purely because the
+            # realtime quote is a (non-stale, non-failed) fallback.
+            continue
+        return True
     return False
+
+
+def _us_daily_and_technical_are_clean(overview: Mapping[str, Any]) -> bool:
+    block_scores = _nested_get(overview, "data_quality", "block_scores")
+    if not isinstance(block_scores, Mapping):
+        return False
+    return all(
+        _safe_score(block_scores.get(key)) >= _US_CLEAN_DAILY_TECHNICAL_MIN_SCORE
+        for key in ("daily_bars", "technical")
+    )
+
+
+def _nested_get(value: Any, *keys: str) -> Any:
+    current = value
+    for key in keys:
+        if not isinstance(current, Mapping):
+            return None
+        current = current.get(key)
+    return current
+
+
+def _safe_score(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return -1
+    return int(value)
 
 
 def _overview_limitations(overview: Optional[Mapping[str, Any]]) -> List[str]:

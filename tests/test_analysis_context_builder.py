@@ -456,6 +456,26 @@ def test_data_quality_scores_fixed_blocks_and_limits_auxiliary_missing() -> None
     assert "news: missing" not in blank_news.data_quality.limitations
 
 
+def test_us_market_excludes_chip_from_overall_score_but_ashare_includes_it() -> None:
+    # chip (筹码分布) is China-A-share-only; akshare has no equivalent for US
+    # tickers, so a missing chip block on US should not drag the score down.
+    us_pack = AnalysisContextBuilder.build(
+        _artifacts(market="us", chip_data=None)
+    )
+    assert us_pack.data_quality.block_scores["chip"] == 35  # still reported, informationally
+    # quote/daily_bars/technical/news/fundamentals are all AVAILABLE (100);
+    # with chip excluded from both the weighted sum and the denominator the
+    # US overall_score should be the unweighted 100, not dragged down by chip.
+    assert us_pack.data_quality.overall_score == 100
+
+    ashare_pack = AnalysisContextBuilder.build(
+        _artifacts(market="cn", chip_data=None)
+    )
+    assert ashare_pack.data_quality.block_scores["chip"] == 35
+    # A-share still weighs chip in: weighted_sum = 95*100 + 5*35 = 9675 / 100 = 96.75 -> 97
+    assert ashare_pack.data_quality.overall_score == 97
+
+
 def test_portfolio_block_is_auxiliary_and_does_not_change_quality_score() -> None:
     baseline = AnalysisContextBuilder.build(_artifacts())
     pack = AnalysisContextBuilder.build(

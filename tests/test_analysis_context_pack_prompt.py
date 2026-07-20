@@ -154,6 +154,45 @@ def _builder_artifacts(*, fundamental_context: dict) -> PipelineAnalysisArtifact
     )
 
 
+def _pack_with_chip(*, market: str) -> AnalysisContextPack:
+    return AnalysisContextPack(
+        subject=AnalysisSubject(code="AAPL", stock_name="Apple Inc.", market=market),
+        blocks={
+            "quote": AnalysisContextBlock(status=ContextFieldStatus.AVAILABLE),
+            "daily_bars": AnalysisContextBlock(status=ContextFieldStatus.AVAILABLE),
+            "technical": AnalysisContextBlock(status=ContextFieldStatus.AVAILABLE),
+            "news": AnalysisContextBlock(status=ContextFieldStatus.AVAILABLE),
+            "fundamentals": AnalysisContextBlock(status=ContextFieldStatus.AVAILABLE),
+            "chip": AnalysisContextBlock(status=ContextFieldStatus.MISSING),
+        },
+        data_quality=DataQuality(
+            overall_score=100,
+            level="good",
+            block_scores={
+                "quote": 100,
+                "daily_bars": 100,
+                "technical": 100,
+                "news": 100,
+                "fundamentals": 100,
+                "chip": 35,
+            },
+            limitations=[],
+        ),
+    )
+
+
+def test_us_market_omits_chip_block_from_prompt_but_ashare_keeps_it() -> None:
+    us_section = format_analysis_context_pack_prompt_section(
+        _pack_with_chip(market="us"), report_language="en"
+    )
+    assert "chip" not in us_section.lower()
+
+    ashare_section = format_analysis_context_pack_prompt_section(
+        _pack_with_chip(market="cn"), report_language="en"
+    )
+    assert "chip: missing" in ashare_section.lower()
+
+
 def test_empty_or_invalid_pack_returns_empty_section() -> None:
     assert format_analysis_context_pack_prompt_section(None) == ""
     assert format_analysis_context_pack_prompt_section({}) == ""

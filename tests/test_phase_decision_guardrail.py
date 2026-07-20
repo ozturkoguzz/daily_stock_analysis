@@ -305,6 +305,106 @@ def test_postmarket_recap_and_missing_inputs_are_fail_open() -> None:
     assert missing.dashboard["phase_decision"]["data_limitations"] == []
 
 
+def _us_overview(*, quote_status: str, daily_bars_score: int = 100, technical_score: int = 100) -> dict:
+    return {
+        "subject": {"code": "AAPL", "stock_name": "Apple Inc.", "market": "us"},
+        "blocks": [
+            {
+                "key": "quote",
+                "label": "quote",
+                "status": quote_status,
+                "source": "yfinance",
+                "warnings": [],
+                "missing_reasons": [],
+            },
+            {
+                "key": "daily_bars",
+                "label": "daily bars",
+                "status": "available" if daily_bars_score >= 90 else "stale",
+                "source": "yfinance",
+                "warnings": [],
+                "missing_reasons": [],
+            },
+            {
+                "key": "technical",
+                "label": "technical",
+                "status": "available" if technical_score >= 90 else "stale",
+                "source": "local",
+                "warnings": [],
+                "missing_reasons": [],
+            },
+        ],
+        "data_quality": {
+            "overall_score": 90,
+            "level": "good",
+            "block_scores": {
+                "quote": 65 if quote_status == "fallback" else 50,
+                "daily_bars": daily_bars_score,
+                "technical": technical_score,
+            },
+            "limitations": [f"quote: {quote_status}"],
+        },
+    }
+
+
+def test_us_quote_fallback_with_clean_daily_and_technical_is_not_capped() -> None:
+    result = _result()
+
+    adjustments = apply_phase_decision_guardrails(
+        result,
+        market_phase_summary=_phase("intraday"),
+        analysis_context_pack_overview=_us_overview(quote_status="fallback"),
+        report_language="en",
+    )
+
+    assert "confidence_capped_core_data_degraded" not in adjustments
+    assert result.confidence_level == "高"
+
+
+def test_us_quote_stale_is_still_capped_even_with_clean_daily_and_technical() -> None:
+    result = _result()
+
+    adjustments = apply_phase_decision_guardrails(
+        result,
+        market_phase_summary=_phase("intraday"),
+        analysis_context_pack_overview=_us_overview(quote_status="stale"),
+        report_language="en",
+    )
+
+    assert "confidence_capped_core_data_degraded" in adjustments
+    assert result.confidence_level == "Medium"
+
+
+def test_us_quote_fallback_with_degraded_technical_is_still_capped() -> None:
+    result = _result()
+
+    adjustments = apply_phase_decision_guardrails(
+        result,
+        market_phase_summary=_phase("intraday"),
+        analysis_context_pack_overview=_us_overview(quote_status="fallback", technical_score=50),
+        report_language="en",
+    )
+
+    assert "confidence_capped_core_data_degraded" in adjustments
+    assert result.confidence_level == "Medium"
+
+
+def test_ashare_quote_fallback_is_still_capped_unchanged() -> None:
+    result = _result()
+    overview = _us_overview(quote_status="fallback")
+    overview["subject"]["market"] = "cn"
+
+    adjustments = apply_phase_decision_guardrails(
+        result,
+        market_phase_summary=_phase("intraday"),
+        analysis_context_pack_overview=overview,
+        report_language="en",
+    )
+
+    assert "confidence_capped_core_data_degraded" in adjustments
+    assert result.confidence_level == "Medium"
+
+
 def test_guardrail_creates_dashboard_for_agent_compatible_result_object() -> None:
     result = SimpleNamespace(
         confidence_level="高",

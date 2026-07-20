@@ -198,6 +198,12 @@ def _format_en(payload: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _is_us_market(payload: Dict[str, Any]) -> bool:
+    subject = payload.get("subject") if isinstance(payload.get("subject"), Mapping) else {}
+    market = _safe_text(subject.get("market"))
+    return market.strip().lower() == "us"
+
+
 def _subject_lines(payload: Dict[str, Any], *, lang: str) -> List[str]:
     subject = payload.get("subject") if isinstance(payload.get("subject"), Mapping) else {}
     code = _safe_text(subject.get("code"))
@@ -240,6 +246,12 @@ def _block_lines(payload: Dict[str, Any], *, lang: str) -> List[str]:
 
     labels = get_analysis_context_pack_block_labels(lang)
     ordered_keys = iter_analysis_context_pack_block_keys(blocks)
+    if _is_us_market(payload):
+        # `chip` (筹码分布) is structurally impossible on US tickers; showing
+        # it in the model-facing block listing invites the model to cite
+        # "lack of chip distribution" as a confidence factor. A-share/HK
+        # still see it.
+        ordered_keys = [key for key in ordered_keys if key != "chip"]
 
     lines: List[str] = []
     for key in ordered_keys:

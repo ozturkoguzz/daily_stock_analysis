@@ -97,7 +97,9 @@ class AnalysisContextBuilder:
         portfolio_block = _build_portfolio_block(artifacts)
         if portfolio_block is not None:
             blocks["portfolio"] = portfolio_block
-        data_quality = _build_data_quality(blocks, warnings=data_quality_warnings)
+        data_quality = _build_data_quality(
+            blocks, warnings=data_quality_warnings, market=artifacts.market
+        )
 
         return AnalysisContextPack(
             subject=AnalysisSubject(
@@ -501,25 +503,46 @@ def _build_portfolio_block(artifacts: PipelineAnalysisArtifacts) -> Optional[Ana
     )
 
 
+def _is_us_market(market: Optional[str]) -> bool:
+    return isinstance(market, str) and market.strip().lower() == "us"
+
+
+def _quality_block_weights_for_market(market: Optional[str]) -> Dict[str, int]:
+    # `chip` (筹码分布) is China-A-share-only: akshare has no equivalent for US
+    # tickers, so the block is structurally unavailable there, not a data
+    # quality problem. Excluding it (weight 0, out of the denominator) keeps
+    # the US overall_score reflecting data that can actually exist for US.
+    if _is_us_market(market):
+        weights = dict(_QUALITY_BLOCK_WEIGHTS)
+        weights["chip"] = 0
+        return weights
+    return _QUALITY_BLOCK_WEIGHTS
+
+
 def _build_data_quality(
     blocks: Dict[str, AnalysisContextBlock],
     *,
     warnings: List[str],
+    market: Optional[str] = None,
 ) -> DataQuality:
+    weights = _quality_block_weights_for_market(market)
     block_scores: Dict[str, int] = {}
     weighted_sum = 0
-    for key, weight in _QUALITY_BLOCK_WEIGHTS.items():
+    total_weight = 0
+    for key in _QUALITY_BLOCK_WEIGHTS:
         status = _quality_block_status(blocks, key)
         score = _STATUS_SCORES.get(status, _STATUS_SCORES[ContextFieldStatus.MISSING])
         block_scores[key] = score
+        weight = weights[key]
         weighted_sum += score * weight
+        total_weight += weight
 
-    overall_score = int(round(weighted_sum / 100))
+    overall_score = int(round(weighted_sum / total_weight))
     return DataQuality(
         overall_score=overall_score,
         level=_quality_level(overall_score),
         block_scores=block_scores,
-        limitations=_quality_limitations(blocks),
+        limitations=_quality_limitations(blocks, market=market),
         warnings=warnings,
     )
 
@@ -550,14 +573,20 @@ def _quality_level(score: int) -> str:
     return "poor"
 
 
-def _quality_limitations(blocks: Dict[str, AnalysisContextBlock]) -> List[str]:
+def _quality_limitations(
+    blocks: Dict[str, AnalysisContextBlock], *, market: Optional[str] = None
+) -> List[str]:
     limitations: List[str] = []
     for key in ("quote", "daily_bars", "technical"):
         status = _quality_block_status(blocks, key)
         if status in _CORE_LIMITATION_STATUSES:
             limitations.append(f"{key}: {status.value}")
 
-    for key in ("news", "fundamentals", "chip"):
+    # `chip` is structurally impossible on US tickers (see
+    # _quality_block_weights_for_market); don't cite it as a US confidence
+    # limitation. A-share/HK keep it.
+    aux_keys = ("news", "fundamentals") if _is_us_market(market) else ("news", "fundamentals", "chip")
+    for key in aux_keys:
         status = _quality_block_status(blocks, key)
         if status in _AUX_LIMITATION_STATUSES:
             limitations.append(f"{key}: {status.value}")
