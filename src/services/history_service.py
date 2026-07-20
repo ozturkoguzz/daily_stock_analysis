@@ -15,6 +15,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple, TYPE_CHECKING
 
+from src.analyzer import format_volume_ratio
 from src.config import get_config, resolve_news_window_days
 from src.data.stock_index_loader import resolve_index_stock_code
 from src.report_language import (
@@ -26,6 +27,7 @@ from src.report_language import (
     is_chip_structure_unavailable,
     localize_bias_status,
     localize_chip_health,
+    localize_confidence_level,
     localize_trend_prediction,
     normalize_report_language,
     translate_status,
@@ -925,6 +927,7 @@ class HistoryService:
 
         analysis_date_label = _label("Analysis Date", "分析日期", "분석일")
         report_time_label = _label("Report Time", "报告生成时间", "생성 시각")
+        confidence_level_label = _label("Confidence", "置信度", "신뢰도")
         reason_label = _label("Rationale", "操作理由", "판단 근거")
         risk_warning_label = _label("Risk Warning", "风险提示", "리스크 경고")
         technical_heading = _label("Technicals", "技术面", "기술적 분석")
@@ -997,6 +1000,9 @@ class HistoryService:
             "",
             f"**{signal_emoji} {signal_text}** | {localize_trend_prediction(result.trend_prediction, report_language)}",
             "",
+            f"📊 **{labels['score_label']}**: {result.sentiment_score}/100 | "
+            f"{confidence_level_label}: {localize_confidence_level(result.confidence_level, report_language)}",
+            "",
             f"> **{labels['one_sentence_label']}**: {one_sentence}",
             "",
             f"⏰ **{labels['time_sensitivity_label']}**: {time_sense}",
@@ -1060,7 +1066,8 @@ class HistoryService:
             # 量能分析
             if vol_data:
                 report_lines.extend([
-                    f"**{labels['volume_label']}**: {labels['volume_ratio_label']} {vol_data.get('volume_ratio', 'N/A')} "
+                    f"**{labels['volume_label']}**: {labels['volume_ratio_label']} "
+                    f"{format_volume_ratio(vol_data.get('volume_ratio'), vol_data.get('volume_ratio_5d'), labels['volume_ratio_5d_label'])} "
                     f"({translate_status(vol_data.get('volume_status', ''), report_language)}) | {labels['turnover_rate_label']} {vol_data.get('turnover_rate', 'N/A')}%",
                     f"💡 *{vol_data.get('volume_meaning', '')}*",
                     "",
@@ -1094,6 +1101,8 @@ class HistoryService:
                         f"**{labels['chip_label']}**: {chip_unavailable_reason}",
                         "",
                     ])
+
+        self._append_phase_decision_block(report_lines, dashboard, labels)
 
         # ========== 作战计划 ==========
         battle = dashboard.get('battle_plan', {}) if dashboard else {}
@@ -1212,6 +1221,72 @@ class HistoryService:
         if not text:
             return ""
         return text.replace('*', r'\*')
+
+    @staticmethod
+    def _phase_decision_list(value: Any) -> List[str]:
+        if not isinstance(value, list):
+            return []
+        return [str(item).strip() for item in value if str(item).strip()]
+
+    @classmethod
+    def _phase_decision_has_content(cls, phase_decision: Dict[str, Any]) -> bool:
+        text_keys = (
+            "action_window",
+            "immediate_action",
+            "next_check_time",
+            "confidence_reason",
+        )
+        if any(str(phase_decision.get(key) or "").strip() for key in text_keys):
+            return True
+        return bool(
+            cls._phase_decision_list(phase_decision.get("watch_conditions"))
+            or cls._phase_decision_list(phase_decision.get("data_limitations"))
+        )
+
+    def _append_phase_decision_block(
+        self,
+        report_lines: List[str],
+        dashboard: Dict[str, Any],
+        labels: Dict[str, str],
+    ) -> None:
+        phase_decision = dashboard.get("phase_decision") if dashboard else None
+        if not isinstance(phase_decision, dict):
+            return
+        if not self._phase_decision_has_content(phase_decision):
+            return
+
+        watch_conditions = self._phase_decision_list(phase_decision.get("watch_conditions"))
+        data_limitations = self._phase_decision_list(phase_decision.get("data_limitations"))
+
+        report_lines.extend([
+            f"### 🛡️ {labels['phase_decision_heading']}",
+            "",
+            f"| {labels['action_window_label']} | {labels['immediate_action_label']} | {labels['next_check_time_label']} |",
+            "|---------|---------|---------|",
+            f"| {phase_decision.get('action_window') or 'N/A'} | "
+            f"{phase_decision.get('immediate_action') or 'N/A'} | "
+            f"{phase_decision.get('next_check_time') or 'N/A'} |",
+            "",
+        ])
+
+        if watch_conditions:
+            report_lines.append(f"**{labels['watch_conditions_label']}**:")
+            for condition in watch_conditions:
+                report_lines.append(f"- {condition}")
+            report_lines.append("")
+
+        confidence_reason = str(phase_decision.get("confidence_reason") or "").strip()
+        if confidence_reason:
+            report_lines.extend([
+                f"**{labels['confidence_reason_label']}**: {confidence_reason}",
+                "",
+            ])
+
+        if data_limitations:
+            report_lines.append(f"**{labels['data_limitations_label']}**:")
+            for limitation in data_limitations:
+                report_lines.append(f"- {limitation}")
+            report_lines.append("")
 
     @staticmethod
     def _clean_sniper_value(value: Any) -> str:

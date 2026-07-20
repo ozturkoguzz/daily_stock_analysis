@@ -1090,7 +1090,7 @@ class AgentOrchestrator:
             intelligence["latest_news"] = latest_news
 
         if not core.get("one_sentence"):
-            core["one_sentence"] = _truncate_text(analysis_summary, 60)
+            core["one_sentence"] = _truncate_text(analysis_summary, 180)
         if not core.get("time_sensitivity"):
             core["time_sensitivity"] = labels["default_time_sensitivity"]
         if not core.get("signal_type"):
@@ -1775,7 +1775,12 @@ def _truncate_text(text: Any, limit: int) -> str:
     value = str(text or "").strip()
     if len(value) <= limit:
         return value
-    return value[: max(0, limit - 1)].rstrip() + "…"
+    cutoff = max(0, limit - 1)
+    truncated = value[:cutoff]
+    last_space = truncated.rfind(" ")
+    if last_space > 0:
+        truncated = truncated[:last_space]
+    return truncated.rstrip() + "…"
 
 
 def _extract_latest_news_title(intelligence: Dict[str, Any]) -> str:

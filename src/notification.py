@@ -45,6 +45,7 @@ from src.report_language import (
     get_chip_unavailable_reason,
     is_chip_structure_unavailable,
     localize_chip_health,
+    localize_confidence_level,
     localize_trend_prediction,
     normalize_report_language,
     translate_status,
@@ -1177,6 +1178,7 @@ class NotificationService(
             return zh
 
         reason_label = _nlabel("Rationale", "操作理由", "판단 근거")
+        confidence_level_label = _nlabel("Confidence", "置信度", "신뢰도")
         risk_warning_label = _nlabel("Risk Warning", "风险提示", "리스크 경고")
         technical_heading = _nlabel("Technicals", "技术面", "기술적 분석")
         ma_label = _nlabel("Moving Averages", "均线", "이동평균")
@@ -1293,6 +1295,9 @@ class NotificationService(
                     f"### 📌 {labels['core_conclusion_heading']}",
                     "",
                     f"**{signal_emoji} {signal_text}** | {localize_trend_prediction(result.trend_prediction, report_language)}",
+                    "",
+                    f"📊 **{labels['score_label']}**: {result.sentiment_score}/100 | "
+                    f"{confidence_level_label}: {localize_confidence_level(result.confidence_level, report_language)}",
                     "",
                     f"> **{labels['one_sentence_label']}**: {one_sentence}",
                     "",
