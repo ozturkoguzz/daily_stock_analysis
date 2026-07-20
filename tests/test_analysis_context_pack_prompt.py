@@ -193,6 +193,53 @@ def test_us_market_omits_chip_block_from_prompt_but_ashare_keeps_it() -> None:
     assert "chip: missing" in ashare_section.lower()
 
 
+def _pack_with_missing_news(*, market: str) -> AnalysisContextPack:
+    return AnalysisContextPack(
+        subject=AnalysisSubject(code="AAPL", stock_name="Apple Inc.", market=market),
+        blocks={
+            "quote": AnalysisContextBlock(status=ContextFieldStatus.AVAILABLE),
+            "daily_bars": AnalysisContextBlock(status=ContextFieldStatus.AVAILABLE),
+            "technical": AnalysisContextBlock(status=ContextFieldStatus.AVAILABLE),
+            "news": AnalysisContextBlock(
+                status=ContextFieldStatus.MISSING,
+                items={
+                    "content": AnalysisContextItem(
+                        status=ContextFieldStatus.MISSING,
+                        missing_reason="news_context_missing",
+                    )
+                },
+            ),
+            "fundamentals": AnalysisContextBlock(status=ContextFieldStatus.AVAILABLE),
+        },
+        data_quality=DataQuality(overall_score=100, level="good", limitations=[]),
+    )
+
+
+def test_us_market_omits_missing_news_block_but_ashare_keeps_it() -> None:
+    # In agent mode news is deferred to the agent's search tool, so a "missing"
+    # news block is a snapshot artifact, not a data gap — showing it invites the
+    # model to cite "news context is missing" as a confidence limiter. US only.
+    us_section = format_analysis_context_pack_prompt_section(
+        _pack_with_missing_news(market="us"), report_language="en"
+    )
+    assert "news: missing" not in us_section.lower()
+    assert "news_context_missing" not in us_section.lower()
+
+    ashare_section = format_analysis_context_pack_prompt_section(
+        _pack_with_missing_news(market="cn"), report_language="en"
+    )
+    assert "news: missing" in ashare_section.lower()
+
+
+def test_us_market_keeps_available_news_block() -> None:
+    # Only the deferral artifact (missing) is suppressed; genuinely available
+    # news must still be shown to the model.
+    pack = _pack_with_missing_news(market="us")
+    pack.blocks["news"] = AnalysisContextBlock(status=ContextFieldStatus.AVAILABLE)
+    section = format_analysis_context_pack_prompt_section(pack, report_language="en")
+    assert "news: available" in section.lower()
+
+
 def test_empty_or_invalid_pack_returns_empty_section() -> None:
     assert format_analysis_context_pack_prompt_section(None) == ""
     assert format_analysis_context_pack_prompt_section({}) == ""

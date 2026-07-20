@@ -246,7 +246,8 @@ def _block_lines(payload: Dict[str, Any], *, lang: str) -> List[str]:
 
     labels = get_analysis_context_pack_block_labels(lang)
     ordered_keys = iter_analysis_context_pack_block_keys(blocks)
-    if _is_us_market(payload):
+    is_us = _is_us_market(payload)
+    if is_us:
         # `chip` (筹码分布) is structurally impossible on US tickers; showing
         # it in the model-facing block listing invites the model to cite
         # "lack of chip distribution" as a confidence factor. A-share/HK
@@ -259,6 +260,13 @@ def _block_lines(payload: Dict[str, Any], *, lang: str) -> List[str]:
         if not isinstance(block, Mapping):
             continue
         status = _safe_text(block.get("status")) or "unknown"
+        if is_us and key == "news" and status == "missing":
+            # In agent mode US news is deferred to the agent's search tool, so a
+            # "missing" news block is a snapshot artifact, not a data gap. Showing
+            # it invites the model to cite "news context is missing" as a
+            # confidence limiter even though it fetches news mid-analysis.
+            # A-share/HK keep it (their news is pre-fetched into the snapshot).
+            continue
         label = labels.get(key, _safe_text(key))
         parts = [f"{label}: {status}"]
 
