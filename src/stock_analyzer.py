@@ -203,26 +203,35 @@ class StockTrendAnalyzer:
         """初始化分析器"""
         pass
     
-    def analyze(self, df: pd.DataFrame, code: str) -> TrendAnalysisResult:
+    def analyze(self, df: pd.DataFrame, code: str, is_partial_bar: bool = False) -> TrendAnalysisResult:
         """
         分析股票趋势
-        
+
         Args:
             df: 包含 OHLCV 数据的 DataFrame
             code: 股票代码
-            
+            is_partial_bar: 最后一根为盘中未完成K线时为 True（成交量/形态视为暂定，
+                            不作为确认信号）。未显式传入时从 df 的 is_partial_bar 列推断。
+
         Returns:
             TrendAnalysisResult 分析结果
         """
         result = TrendAnalysisResult(code=code)
-        
+
         if df is None or df.empty or len(df) < 20:
             logger.warning(f"{code} 数据不足，无法进行趋势分析")
             result.risk_factors.append("数据不足，无法完成分析")
             return result
-        
+
         # 确保数据按日期排序
         df = df.sort_values('date').reset_index(drop=True)
+
+        # 盘中未完成K线：成交量与单根形态是"暂定"的，不能当作确认信号（INV-1）
+        if not is_partial_bar and "is_partial_bar" in df.columns:
+            try:
+                is_partial_bar = bool(df["is_partial_bar"].iloc[-1])
+            except Exception:
+                is_partial_bar = False
         
         # 计算均线
         df = self._calculate_mas(df)
@@ -246,7 +255,7 @@ class StockTrendAnalyzer:
         self._calculate_bias(result)
 
         # 3. 量能分析
-        self._analyze_volume(df, result)
+        self._analyze_volume(df, result, is_partial_bar=is_partial_bar)
 
         # 4. 支撑压力分析
         self._analyze_support_resistance(df, result)
@@ -408,23 +417,30 @@ class StockTrendAnalyzer:
         if result.ma20 > 0:
             result.bias_ma20 = (price - result.ma20) / result.ma20 * 100
     
-    def _analyze_volume(self, df: pd.DataFrame, result: TrendAnalysisResult) -> None:
+    def _analyze_volume(self, df: pd.DataFrame, result: TrendAnalysisResult,
+                        is_partial_bar: bool = False) -> None:
         """
         分析量能
-        
+
         偏好：缩量回调 > 放量上涨 > 缩量上涨 > 放量下跌
+
+        盘中未完成K线的成交量只是全天的一部分，与全天5日均量比较会得到虚低的量比
+        （0.13 之类的假"缩量"信号）。此时改用最后一根**已完成**K线做量能判断（INV-1）。
         """
-        if len(df) < 5:
+        # A forming intraday bar has partial volume — comparing it to full-day averages
+        # is a mechanical artifact. Use the last COMPLETE bar for the volume signal.
+        vdf = df.iloc[:-1] if (is_partial_bar and len(df) >= 6) else df
+        if len(vdf) < 5:
             return
-        
-        latest = df.iloc[-1]
-        vol_5d_avg = df['volume'].iloc[-6:-1].mean()
-        
+
+        latest = vdf.iloc[-1]
+        vol_5d_avg = vdf['volume'].iloc[-6:-1].mean()
+
         if vol_5d_avg > 0:
             result.volume_ratio_5d = float(latest['volume']) / vol_5d_avg
-        
+
         # 判断价格变化
-        prev_close = df.iloc[-2]['close']
+        prev_close = vdf.iloc[-2]['close']
         price_change = (latest['close'] - prev_close) / prev_close * 100
         
         # 量能状态判断
