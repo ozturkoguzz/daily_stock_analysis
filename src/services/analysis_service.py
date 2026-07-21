@@ -116,6 +116,11 @@ class AnalysisService:
                 analysis_skills=skills,
                 analysis_phase=analysis_phase,
                 portfolio_context=portfolio_context,
+                # Analyze only *loads* the same-day market review (generated once/day by
+                # the scheduled bot job); it never generates it, so no single /analyze
+                # pays the market-review LLM/data cost. Missing cache -> report proceeds
+                # without the recap block (fail-open in _load_daily_market_context).
+                daily_market_context_allow_generate=False,
             )
             
             # 确定报告类型 (API: simple/detailed/full/brief -> ReportType)

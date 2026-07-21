@@ -24,6 +24,7 @@ from src.config import get_config
 from src.report_language import normalize_report_language
 from src.search_service import SearchService
 from src.core.market_profile import get_profile, MarketProfile
+from src.core.trading_calendar import get_effective_trading_date
 from src.core.market_strategy import get_market_strategy_blueprint
 from src.llm.backend_registry import (
     resolve_generation_backend_id,
@@ -428,8 +429,12 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
         Returns:
             MarketOverview: 市场概览数据对象
         """
-        today = datetime.now().strftime('%Y-%m-%d')
-        overview = MarketOverview(date=today)
+        # The recap dates the last completed trading session, not the wall-clock day:
+        # the scheduled job runs pre-market, when today's session has not closed yet and
+        # the index data is the prior close. Labelling it today would read as a finished
+        # "Recap" of a session that hasn't happened. (fail-open to natural date inside.)
+        session_date = get_effective_trading_date(self.region).strftime('%Y-%m-%d')
+        overview = MarketOverview(date=session_date)
         
         # 1. 获取主要指数行情（按 region 切换 A 股/美股）
         overview.indices = self._get_main_indices()
