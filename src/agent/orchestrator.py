@@ -1090,7 +1090,10 @@ class AgentOrchestrator:
             intelligence["latest_news"] = latest_news
 
         if not core.get("one_sentence"):
-            core["one_sentence"] = _truncate_text(analysis_summary, 180)
+            core["one_sentence"] = analysis_summary
+        # one_sentence must be a single clean sentence even if the LLM returned a
+        # multi-line block with an embedded checklist (INV-5).
+        core["one_sentence"] = _truncate_text(_first_sentence(core.get("one_sentence")), 180)
         if not core.get("time_sensitivity"):
             core["time_sensitivity"] = labels["default_time_sensitivity"]
         if not core.get("signal_type"):
@@ -1771,8 +1774,17 @@ def _first_non_empty_text(*values: Any) -> str:
     return ""
 
 
+def _first_sentence(text: Any) -> str:
+    """First sentence only — collapses whitespace, cuts at the first . ! or ? (INV-5)."""
+    s = " ".join(str(text or "").split())
+    m = re.search(r"[.!?](\s|$)", s)
+    return s[: m.end()].strip() if m else s
+
+
 def _truncate_text(text: Any, limit: int) -> str:
-    value = str(text or "").strip()
+    # Collapse all whitespace (incl. newlines) to single spaces so a display line can
+    # never carry an embedded checklist/newline and sentence boundaries are ". " (INV-5).
+    value = " ".join(str(text or "").split())
     if len(value) <= limit:
         return value
     cutoff = max(0, limit - 1)
