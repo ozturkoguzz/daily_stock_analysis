@@ -20,7 +20,7 @@ _RULES = ("breakout", "oversold")
 
 
 def _engine():
-    return DatabaseManager.get_instance().engine
+    return DatabaseManager.get_instance()._engine
 
 
 def download_history(tickers: List[str]) -> Dict[str, object]:
