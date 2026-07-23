@@ -51,6 +51,19 @@ class MarketPhasePromptTestCase(unittest.TestCase):
         self.assertIn("不得当作完整日线复盘", section)
         self.assertIn("距常规收盘约 300 分钟", section)
 
+    def test_intraday_partial_bar_marks_volume_and_patterns_provisional_zh(self):
+        section = format_market_phase_prompt_section(_ctx())
+        self.assertIn("暂定", section)          # provisional
+        self.assertIn("成交量", section)         # volume
+        self.assertIn("死叉", section)           # death cross caution
+
+    def test_intraday_partial_bar_marks_volume_and_patterns_provisional_en(self):
+        section = format_market_phase_prompt_section(_ctx(), report_language="en")
+        low = section.lower()
+        self.assertIn("provisional", low)
+        self.assertIn("volume", low)
+        self.assertIn("death cross", low)
+
     def test_lunch_break_and_closing_auction_add_phase_specific_guidance(self):
         lunch = format_market_phase_prompt_section(_ctx(phase="lunch_break"))
         closing = format_market_phase_prompt_section(_ctx(phase="closing_auction"))

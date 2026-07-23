@@ -147,7 +147,12 @@ def _phase_rule_zh(ctx: Dict[str, Any], phase: str) -> str:
     if phase in {"intraday", "lunch_break", "closing_auction"}:
         base = "当前不是盘后复盘，应聚焦当前盘中状态、观察条件与下一次检查点。"
         if ctx.get("is_partial_bar") is True:
-            base += " 今日最后一根日线可能尚未完成，不得当作完整日线复盘。"
+            base += (
+                " 今日最后一根日线可能尚未完成，不得当作完整日线复盘。"
+                "此时今日成交量与任何单根K线形态（如吞没形态）只是暂定信号，不得当作确认信号；"
+                "当 MACD 快慢线仍在零轴同侧时，不得判定为“金叉/死叉”；"
+                "不得仅凭这些暂定的盘中信号下调一个由完整日线确认的强势趋势。"
+            )
         if phase == "lunch_break":
             base += " 午间休市期间应说明后续复盘仍需下午交易确认。"
         if phase == "closing_auction":
@@ -172,7 +177,13 @@ def _phase_rule_en(ctx: Dict[str, Any], phase: str) -> str:
     if phase in {"intraday", "lunch_break", "closing_auction"}:
         base = "This is not a post-market recap. Focus on the current intraday state, watch conditions, and next check point."
         if ctx.get("is_partial_bar") is True:
-            base += " The latest daily bar may be unfinished; do not treat it as a complete daily candle."
+            base += (
+                " The latest daily bar is a forming intraday candle: treat today's VOLUME and any"
+                " single-candle pattern (e.g. bullish/bearish engulfing) as PROVISIONAL, not"
+                " confirmed. Do not call a MACD 'death cross' or 'golden cross' while both MACD"
+                " lines are on the same side of zero. Do not downgrade a strong completed-bar"
+                " trend on provisional intraday signals alone."
+            )
         if phase == "lunch_break":
             base += " During the lunch break, later confirmation depends on the afternoon session."
         if phase == "closing_auction":
