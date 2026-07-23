@@ -1775,8 +1775,10 @@ def _first_non_empty_text(*values: Any) -> str:
 
 
 def _first_sentence(text: Any) -> str:
-    """First sentence only — collapses whitespace, cuts at the first . ! or ? (INV-5)."""
+    """First sentence only — collapses whitespace, strips a leading internal annotation
+    like '[Risk override: hold -> sell]' / '[风控下调: ...]', cuts at the first . ! ? (INV-5)."""
     s = " ".join(str(text or "").split())
+    s = re.sub(r"^\[[^\]]*\]\s*", "", s)  # drop a leading bracketed internal tag
     m = re.search(r"[.!?](\s|$)", s)
     return s[: m.end()].strip() if m else s
 

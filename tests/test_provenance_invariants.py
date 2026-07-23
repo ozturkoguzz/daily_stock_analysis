@@ -61,3 +61,10 @@ def test_INV5_truncation_single_sentence_no_midword():
     assert "\n" not in out, "one_sentence must be a single line (INV-5)"
     body = out[:-1] if out.endswith("…") else out
     assert not body.endswith(" "), "must not end on a dangling space (INV-5)"
+
+
+def test_INV5_one_sentence_strips_internal_risk_annotation():
+    from src.agent.orchestrator import _first_sentence
+    out = _first_sentence("[Risk override: hold -> sell] Hold JPM; trend consolidating.")
+    assert out == "Hold JPM; trend consolidating."
+    assert "Risk override" not in out

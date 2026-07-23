@@ -88,6 +88,12 @@ def build_risk_override_plan(
                 normalized_current,
                 steps=_DOWNGRADE_STEPS[adjustment],
             )
+            # A mild single-step downgrade must not flip a neutral HOLD to a full SELL on
+            # non-high-severity risk — that over-reacts (INV-3: strong-bull -> sell bug).
+            # SELL from HOLD requires a veto, a high-severity flag, or a two-step downgrade.
+            if (adjustment == "downgrade_one" and normalized_current == "hold"
+                    and target_signal == "sell" and not (veto_buy or has_high_flag)):
+                target_signal = "hold"
         will_apply = target_signal != normalized_current
 
     return RiskOverridePlan(
