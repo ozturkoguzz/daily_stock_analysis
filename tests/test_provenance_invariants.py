@@ -1,6 +1,13 @@
-"""Provenance-conformance invariants. Each asserts the engine honors input context
-(partial / fallback / language). Some fail until the matching phase lands — that failure
-is the documented baseline of the 'unhonored data-context' class."""
+"""Provenance-conformance invariants — the enforcement contract for the 'unhonored
+data-context' class. Each locks one rule; a regression here means a consumer stopped
+honoring input provenance (partial / fallback / A-share / language).
+
+  INV-1  partial-bar volume is not a confirmed shrink/heavy signal
+  INV-1b partial-bar intraday high is not a confirmed resistance level
+  INV-2  no CJK reaches an EN-rendered field (translate_status covers the statuses)
+  INV-3  a mild risk downgrade does not flip a neutral HOLD to SELL (see test_risk_override_cap)
+  INV-5  one_sentence is a single clean sentence, internal tags stripped
+"""
 import re
 
 import pandas as pd
@@ -81,3 +88,12 @@ def test_INV5_one_sentence_strips_internal_risk_annotation():
     out = _first_sentence("[Risk override: hold -> sell] Hold JPM; trend consolidating.")
     assert out == "Hold JPM; trend consolidating."
     assert "Risk override" not in out
+
+
+def test_INV2_render_translates_status_no_cjk_leak():
+    # The render path calls translate_status; every trend/volume status must map to EN.
+    from src.report_language import translate_status
+    for zh in ("缩量上涨", "缩量回调", "放量上涨", "放量下跌", "量能正常",
+               "多头排列", "空头排列"):
+        en = translate_status(zh, "en")
+        assert not _has_cjk(en), f"status {zh!r} leaks CJK into EN render: {en!r} (INV-2)"
