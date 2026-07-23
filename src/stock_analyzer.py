@@ -258,7 +258,7 @@ class StockTrendAnalyzer:
         self._analyze_volume(df, result, is_partial_bar=is_partial_bar)
 
         # 4. 支撑压力分析
-        self._analyze_support_resistance(df, result)
+        self._analyze_support_resistance(df, result, is_partial_bar=is_partial_bar)
 
         # 5. MACD 分析
         self._analyze_macd(df, result)
@@ -462,11 +462,14 @@ class StockTrendAnalyzer:
             result.volume_status = VolumeStatus.NORMAL
             result.volume_trend = "量能正常"
     
-    def _analyze_support_resistance(self, df: pd.DataFrame, result: TrendAnalysisResult) -> None:
+    def _analyze_support_resistance(self, df: pd.DataFrame, result: TrendAnalysisResult,
+                                    is_partial_bar: bool = False) -> None:
         """
         分析支撑压力位
-        
+
         买点偏好：回踩 MA5/MA10 获得支撑
+
+        盘中未完成K线的最高价只是暂定的日内极值，不能当作确认的压力位（INV-1b）。
         """
         price = result.current_price
         
@@ -489,9 +492,10 @@ class StockTrendAnalyzer:
         if result.ma20 > 0 and price >= result.ma20:
             result.support_levels.append(result.ma20)
         
-        # 近期高点作为压力
-        if len(df) >= 20:
-            recent_high = df['high'].iloc[-20:].max()
+        # 近期高点作为压力（盘中排除未完成K线的暂定高点，见 INV-1b）
+        hdf = df.iloc[:-1] if (is_partial_bar and len(df) >= 21) else df
+        if len(hdf) >= 20:
+            recent_high = hdf['high'].iloc[-20:].max()
             if recent_high > price:
                 result.resistance_levels.append(recent_high)
 

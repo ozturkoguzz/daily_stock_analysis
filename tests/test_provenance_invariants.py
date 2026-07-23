@@ -52,6 +52,19 @@ def test_INV1_complete_bar_volume_unchanged():
     assert abs(r_flagged.volume_ratio_5d - r_plain.volume_ratio_5d) < 1e-9
 
 
+def test_INV1b_partial_bar_intraday_high_not_a_resistance():
+    # A forming bar's intraday spike-high must not become a confirmed resistance level.
+    closes = [100 + i * 0.1 for i in range(40)]
+    highs = [c * 1.01 for c in closes]
+    highs[-1] = closes[-1] * 1.08                      # 8% intraday wick
+    df = _frame(closes, [1_000_000] * 39 + [130_000])
+    df["high"] = highs
+    r = StockTrendAnalyzer().analyze(df, "TEST", is_partial_bar=True)
+    spike = closes[-1] * 1.08
+    assert not any(abs(x - spike) < 0.5 for x in r.resistance_levels), \
+        "forming-bar intraday high must not be a confirmed resistance (INV-1b)"
+
+
 # --- INV-5: one_sentence is a single, cleanly-ended sentence ---
 
 def test_INV5_truncation_single_sentence_no_midword():
