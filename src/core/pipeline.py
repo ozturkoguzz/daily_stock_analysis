@@ -80,6 +80,7 @@ from src.services.run_diagnostics import (
 from src.services.decision_signal_extractor import extract_and_persist_from_analysis_result
 from src.services.decision_signal_summary import summarize_decision_signal
 from src.enums import ReportType
+from src.core.data_context import resolve_data_context
 from src.stock_analyzer import StockTrendAnalyzer, TrendAnalysisResult
 from src.core.trading_calendar import (
     build_market_phase_context,
@@ -541,9 +542,13 @@ class StockAnalysisPipeline:
                     # Issue #234: Augment with realtime for intraday MA calculation
                     if self.config.enable_realtime_quote and realtime_quote:
                         df = self._augment_historical_with_realtime(df, realtime_quote, code)
-                    _partial = bool(market_phase_context_dict.get("is_partial_bar")) \
-                        if isinstance(market_phase_context_dict, dict) else False
-                    trend_result = self.trend_analyzer.analyze(df, code, is_partial_bar=_partial)
+                    _dctx = resolve_data_context(
+                        market_phase_context_dict,
+                        self._safe_to_dict(realtime_quote),
+                        getattr(self.config, "report_language", None),
+                    )
+                    trend_result = self.trend_analyzer.analyze(
+                        df, code, is_partial_bar=_dctx.is_partial_bar)
                     logger.info(f"{stock_name}({code}) 趋势分析: {trend_result.trend_status.value}, "
                               f"买入信号={trend_result.buy_signal.value}, 评分={trend_result.signal_score}")
             except Exception as e:
