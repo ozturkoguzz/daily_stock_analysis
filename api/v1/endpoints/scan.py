@@ -112,12 +112,26 @@ def nominate() -> NominateResponse:
 
 
 def _latest_close(ticker: str):
+    import time
     import yfinance as yf
-    try:
-        df = yf.download(ticker, period="5d", interval="1d", progress=False, auto_adjust=True)
-        return float(df["Close"].dropna().iloc[-1]) if len(df) else None
-    except Exception:
-        return None
+    for _ in range(2):  # yfinance single-ticker calls are flaky after a batch; retry once
+        try:
+            df = yf.download(ticker, period="5d", interval="1d", progress=False, auto_adjust=True)
+            if len(df):
+                return float(df["Close"].dropna().iloc[-1])
+        except Exception:
+            pass
+        time.sleep(0.4)
+    return None
+
+
+def _graded_return(row):
+    """The stored forward outcome (no live fetch) — prefer 20d, else 5d."""
+    if row.get("ret_20d") is not None:
+        return row["ret_20d"] * 100, "20d"
+    if row.get("ret_5d") is not None:
+        return row["ret_5d"] * 100, "5d"
+    return None, None
 
 
 @router.get("/history", response_model=HistoryResponse)
@@ -125,13 +139,23 @@ def history(ticker: str = Query(...), limit: int = Query(10, ge=1, le=50)) -> Hi
     engine = _engine()
     store.ensure_table(engine)
     rows = store.list_for_ticker(engine, ticker, limit)
-    latest = _latest_close(ticker) if rows else None
+    # Live price only needed for not-yet-graded rows; fetch once, best-effort.
+    need_live = any(_graded_return(r)[0] is None for r in rows)
+    latest = _latest_close(ticker) if (rows and need_live) else None
     calls = []
     for row in rows:
         entry = row.get("entry_close")
-        ret = (latest / entry - 1.0) * 100 if (latest and entry) else None
-        calls.append(HistoryItem(session_date=row["session_date"], rule=row["rule"],
-                     entry_close=entry, latest_close=latest, return_pct=ret))
+        gret, horizon = _graded_return(row)
+        if gret is not None:  # graded outcome — the real, stored forward return
+            calls.append(HistoryItem(session_date=row["session_date"], rule=row["rule"],
+                         entry_close=entry, latest_close=None, return_pct=gret, horizon=horizon))
+        elif latest and entry:  # not graded yet — live since-entry return
+            calls.append(HistoryItem(session_date=row["session_date"], rule=row["rule"],
+                         entry_close=entry, latest_close=latest,
+                         return_pct=(latest / entry - 1.0) * 100, horizon="live"))
+        else:  # too young + no price — pending, entry only (never "$None")
+            calls.append(HistoryItem(session_date=row["session_date"], rule=row["rule"],
+                         entry_close=entry, latest_close=None, return_pct=None, horizon=None))
     return HistoryResponse(ticker=ticker.upper(), calls=calls)
 
 

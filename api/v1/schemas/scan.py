@@ -27,6 +27,7 @@ class HistoryItem(BaseModel):
     entry_close: Optional[float] = None
     latest_close: Optional[float] = None
     return_pct: Optional[float] = None
+    horizon: Optional[str] = None  # "20d" / "5d" (graded), "live" (since entry), or None (pending)
 
 
 class HistoryResponse(BaseModel):
