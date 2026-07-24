@@ -77,3 +77,16 @@ def test_track_record_aggregates_graded_rows():
         r = _client().get("/api/v1/scan/track-record")
     rec = {x["rule"]: x for x in r.json()["rules"]}
     assert rec["breakout"]["n"] == 1 and abs(rec["breakout"]["mean_20d_pct"] - 20.0) < 1e-6
+
+
+def test_trim_to_session_drops_forming_bar():
+    import pandas as pd
+    from api.v1.endpoints.scan import _trim_to_session
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-07-17", "2026-07-20", "2026-07-21"]),
+        "close": [100.0, 101.0, 95.0],  # last row = today's forming intraday bar
+    })
+    # session_date = last complete session; the 07-21 forming bar must be dropped
+    out = _trim_to_session(df, "2026-07-20")
+    assert len(out) == 2
+    assert str(out["date"].iloc[-1])[:10] == "2026-07-20"

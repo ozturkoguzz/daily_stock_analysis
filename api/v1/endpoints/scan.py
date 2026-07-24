@@ -40,6 +40,19 @@ def download_history(tickers: List[str]) -> Dict[str, object]:
     return out
 
 
+def _trim_to_session(df, session_date: str):
+    """Drop any bar dated after session_date (the last COMPLETE session). Intraday,
+    yfinance appends a forming daily bar; screening it makes /signals nominate on the
+    live intraday price and flicker (e.g. an intraday RSI dip surfaces then vanishes).
+    Screening only complete bars keeps the board stable and aligned with its date."""
+    if df is None or "date" not in getattr(df, "columns", []):
+        return df
+    try:
+        return df[df["date"].astype(str).str[:10] <= session_date]
+    except Exception:
+        return df
+
+
 def _price_lookup_factory(history: Dict[str, object]):
     def lookup(ticker: str, session_date: str, horizon: int):
         df = history.get(ticker)
@@ -77,7 +90,7 @@ def nominate() -> NominateResponse:
         history = download_history(NDX_100)
         noms: List[dict] = []
         for ticker, df in history.items():
-            noms.extend(screen_one(df, ticker))
+            noms.extend(screen_one(_trim_to_session(df, session_date), ticker))
         store.persist_nominations(engine, session_date, noms)
         existing = store.list_for_date(engine, session_date)
 
