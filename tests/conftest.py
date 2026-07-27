@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import pytest
 import concurrent.futures
 import time
 import threading
@@ -249,3 +250,22 @@ class _ThreadlessTestClient:
 
 fastapi.testclient.TestClient = _ThreadlessTestClient
 starlette.testclient.TestClient = _ThreadlessTestClient
+
+
+@pytest.fixture(autouse=True)
+def _clear_search_cache():
+    """Isolate the search-result cache between tests.
+
+    SearchService caches results per class rather than per instance, because the
+    analysis pipeline and the Agent tools hold different objects and were each
+    paying for the same query. That makes the cache process-global, so a test
+    would otherwise inherit whatever the previous one searched for.
+    """
+    try:
+        from src.search_service import SearchService
+    except Exception:  # search deps absent in some environments
+        yield
+        return
+    SearchService.clear_cache()
+    yield
+    SearchService.clear_cache()

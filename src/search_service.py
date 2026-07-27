@@ -2129,6 +2129,10 @@ class SearchService:
     FUTURE_TOLERANCE_DAYS = 1
     ANALYTICAL_INTEL_LOOKBACK_DAYS = 180
     ANALYTICAL_INTEL_DIMENSIONS = {"market_analysis", "earnings"}
+    # Shared by every SearchService object in the process; see __init__.
+    _SHARED_CACHE: Dict[str, Tuple[float, 'SearchResponse']] = {}
+    _SHARED_CACHE_LOCK = threading.RLock()
+    _SHARED_CACHE_INFLIGHT: Dict[str, threading.Event] = {}
     _CHINESE_TEXT_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
     _US_STOCK_RE = re.compile(r"^[A-Za-z]{1,5}(\.[A-Za-z])?$")
     _DIRECT_NEWS_CATEGORY = "direct_company_news"
@@ -2347,10 +2351,15 @@ class SearchService:
         if not self._providers:
             logger.warning("未配置任何搜索能力，新闻搜索功能将不可用")
 
-        # In-memory search result cache: {cache_key: (timestamp, SearchResponse)}
-        self._cache: Dict[str, Tuple[float, 'SearchResponse']] = {}
-        self._cache_lock = threading.RLock()
-        self._cache_inflight: Dict[str, threading.Event] = {}
+        # Search results cache per class, not per instance. The analysis
+        # pipeline builds its own SearchService while the Agent tools use the
+        # module singleton, so a per-instance cache let one analysis buy the
+        # identical query twice, seconds apart (measured on MRVL 2026-07-27).
+        # Instances are constructed from the same config, and the key already
+        # carries max_results and the result window, so sharing is safe.
+        self._cache = SearchService._SHARED_CACHE
+        self._cache_lock = SearchService._SHARED_CACHE_LOCK
+        self._cache_inflight = SearchService._SHARED_CACHE_INFLIGHT
         # Default cache TTL in seconds (10 minutes)
         self._cache_ttl: int = 600
         logger.info(
@@ -2504,6 +2513,13 @@ class SearchService:
     def is_available(self) -> bool:
         """检查是否有可用的搜索引擎"""
         return any(p.is_available for p in self._providers)
+
+    @classmethod
+    def clear_cache(cls) -> None:
+        """Drop every cached search result. For tests and manual invalidation."""
+        with cls._SHARED_CACHE_LOCK:
+            cls._SHARED_CACHE.clear()
+            cls._SHARED_CACHE_INFLIGHT.clear()
 
     def _cache_key(self, query: str, max_results: int, days: int) -> str:
         """Build a cache key from query parameters."""
@@ -4510,6 +4526,9 @@ def reset_search_service() -> None:
     global _search_service
     with _search_service_lock:
         _search_service = None
+    # The result cache now outlives any single instance, so resetting the
+    # singleton without clearing it would leak results between tests.
+    SearchService.clear_cache()
 
 
 if __name__ == "__main__":

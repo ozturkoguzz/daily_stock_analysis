@@ -88,7 +88,16 @@ def _ok(query: str) -> SearchResponse:
     )
 
 
-class TestNewsQueryDeduplication(unittest.TestCase):
+class _CacheIsolated(unittest.TestCase):
+    """Search results cache per class now, so tests must not inherit each other's."""
+
+    def setUp(self) -> None:
+        SearchService.clear_cache()
+
+    tearDown = setUp
+
+
+class TestNewsQueryDeduplication(_CacheIsolated):
     """A: the same ticker must not be searched once per name spelling."""
 
     def _run_two_calls(self, first_name: str, second_name: str):
@@ -128,7 +137,7 @@ class TestNewsQueryDeduplication(unittest.TestCase):
         self.assertEqual(len(calls), 2)
 
 
-class TestAnalyticalDimensionRouting(unittest.TestCase):
+class TestAnalyticalDimensionRouting(_CacheIsolated):
     """B: analyst-rating and earnings intel must reach a provider that works."""
 
     def test_analytical_dimensions_are_routed_to_tavily(self) -> None:
@@ -157,3 +166,97 @@ class TestAnalyticalDimensionRouting(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _generic(query: str) -> SearchResponse:
+    """A successful search that yields no *direct* company news."""
+    from datetime import datetime, timezone
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return SearchResponse(
+        query=query,
+        results=[
+            SearchResult(
+                title="Wall Street drifts as traders await inflation data",
+                snippet="Broad indexes were little changed in early trading.",
+                url="https://example.com/macro",
+                source="example.com",
+                published_date=today,
+            )
+        ],
+        provider="Tavily",
+        success=True,
+    )
+
+
+class TestCachingOfEmptyButSuccessfulSearches(_CacheIsolated):
+    """A determinate 'nothing relevant' answer must not be re-bought."""
+
+    def test_a_search_with_no_direct_news_is_not_paid_for_twice(self) -> None:
+        calls = []
+        provider = _fake_provider("Tavily")
+        provider.search.side_effect = lambda q, max_results=5, days=7, **k: (
+            calls.append(q) or _generic(q))
+        service = _service([provider])
+
+        service.search_stock_news("MRVL", "Marvell Technology", max_results=5)
+        service.search_stock_news("MRVL", "Marvell Technology", max_results=5)
+
+        self.assertEqual(len(calls), 1, f"expected 1 paid search, got {calls}")
+
+    def test_a_failed_search_is_still_retried(self) -> None:
+        # Failures are transient (quota, rate limit, network). Caching them
+        # would stretch a blip into a ten-minute outage.
+        calls = []
+        provider = _fake_provider("Tavily", success=False)
+        original = provider.search.side_effect
+        provider.search.side_effect = lambda q, max_results=5, days=7, **k: (
+            calls.append(q) or original(q, max_results=max_results, days=days, **k))
+        service = _service([provider])
+
+        service.search_stock_news("MRVL", "Marvell Technology", max_results=5)
+        service.search_stock_news("MRVL", "Marvell Technology", max_results=5)
+
+        self.assertEqual(len(calls), 2, "a transient failure must not be cached")
+
+
+class TestCacheIsSharedAcrossServiceInstances(_CacheIsolated):
+    """The same query must not be bought once per SearchService object.
+
+    Real case, MRVL on 2026-07-27: one analysis paid Tavily twice for the
+    identical query 1.6s apart. The analysis pipeline
+    (src/core/pipeline.py) constructs its own SearchService while the Agent
+    tools (src/agent/tools/search_tools.py) use the module singleton. Each
+    object had a private in-memory cache, so no amount of query normalisation
+    could make them share a result.
+    """
+
+    def test_two_instances_do_not_each_pay_for_the_same_query(self) -> None:
+        calls = []
+
+        def provider_for(service_calls):
+            provider = _fake_provider("Tavily")
+            provider.search.side_effect = lambda q, max_results=5, days=7, **k: (
+                service_calls.append(q) or _ok(q))
+            return provider
+
+        pipeline_service = _service([provider_for(calls)])
+        agent_service = _service([provider_for(calls)])
+
+        pipeline_service.search_stock_news("MRVL", "Marvell Technology", max_results=5)
+        agent_service.search_stock_news("MRVL", "Marvell Technology", max_results=5)
+
+        self.assertEqual(len(calls), 1, f"expected 1 paid search across both, got {calls}")
+
+    def test_clear_cache_lets_a_fresh_run_search_again(self) -> None:
+        calls = []
+        provider = _fake_provider("Tavily")
+        provider.search.side_effect = lambda q, max_results=5, days=7, **k: (
+            calls.append(q) or _ok(q))
+        service = _service([provider])
+
+        service.search_stock_news("MRVL", "Marvell Technology", max_results=5)
+        SearchService.clear_cache()
+        service.search_stock_news("MRVL", "Marvell Technology", max_results=5)
+
+        self.assertEqual(len(calls), 2)
