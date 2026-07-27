@@ -22,6 +22,7 @@ from api.v1.endpoints import (
     health,
     history,
     intelligence,
+    market,
     portfolio,
     scan,
     stocks,
@@ -120,4 +121,10 @@ router.include_router(
     scan.router,
     prefix="/scan",
     tags=["Scan"]
+)
+
+router.include_router(
+    market.router,
+    prefix="/market",
+    tags=["Market"]
 )

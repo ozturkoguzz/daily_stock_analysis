@@ -8,9 +8,10 @@ from typing import Dict, List
 from fastapi import APIRouter, Query
 
 from api.v1.schemas.scan import (Candidate, NominateResponse, HistoryItem,
-                                 HistoryResponse, TrackRecordRule, TrackRecordResponse)
+                                 HistoryResponse, TrackRecordRule, TrackRecordResponse,
+                                 ScreenRequest, ScreenResponse, ScreenRow)
 from src.core.trading_calendar import get_effective_trading_date
-from src.services.signal_screen import NDX_100, screen_one
+from src.services.signal_screen import NDX_100, describe_one, screen_one
 from src.services import signal_nomination_store as store
 from src.storage import DatabaseManager
 
@@ -74,6 +75,38 @@ def _prev_session(engine, session_date: str) -> str:
                        "WHERE session_date < :d ORDER BY session_date DESC LIMIT 1",
                        {"d": session_date})
     return rows[0]["session_date"] if rows else ""
+
+
+@router.post("/screen", response_model=ScreenResponse)
+def screen(request: ScreenRequest) -> ScreenResponse:
+    """Describe an arbitrary ticker list. No LLM, no search, nothing persisted.
+
+    Backs the bot's watchlist digest, which replaced a per-ticker /analyze that
+    cost real money and then discarded most of what it bought. Every requested
+    ticker gets a row unless it is untradeable or too new to measure -- a digest
+    that drops a user's quiet names is not a digest.
+    """
+    tickers = [t.strip().upper() for t in request.tickers if t and t.strip()]
+    if not tickers:
+        return ScreenResponse(
+            session_date=get_effective_trading_date("us").strftime("%Y-%m-%d"), rows=[])
+
+    session_date = get_effective_trading_date("us").strftime("%Y-%m-%d")
+    history = download_history(tickers)
+
+    rows: List[ScreenRow] = []
+    for ticker in tickers:
+        df = history.get(ticker)
+        if df is None:
+            continue
+        try:
+            described = describe_one(_trim_to_session(df, session_date), ticker)
+        except Exception:
+            logger.warning("screen: failed on %s", ticker, exc_info=True)
+            continue  # one bad ticker must not lose the rest of the digest
+        if described is not None:
+            rows.append(ScreenRow(**described))
+    return ScreenResponse(session_date=session_date, rows=rows)
 
 
 @router.get("/nominate", response_model=NominateResponse)

@@ -2,7 +2,7 @@
 breakout (bullish + near 20d high + volume) and oversold bounce (RSI6<15). No LLM."""
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from src.stock_analyzer import StockTrendAnalyzer
 
@@ -26,14 +26,23 @@ MIN_ROWS = 60
 _ANALYZER = StockTrendAnalyzer()
 
 
-def screen_one(df, ticker: str) -> List[Dict]:
-    """Return 0..2 nomination dicts for one ticker. Columns must be lowercased OHLCV."""
+def describe_one(df, ticker: str) -> Optional[Dict]:
+    """Describe one ticker: its metrics plus which rules it trips (possibly none).
+
+    The watchlist digest needs a row for every name a user follows, not only the
+    ones that nominate, so the measuring lives here and screen_one() selects from
+    it. Keeping one implementation is deliberate: the digest and the /signals
+    board must never disagree about the same stock on the same day.
+
+    Returns None when there is not enough history to measure.
+    """
     if df is None or len(df) < MIN_ROWS:
-        return []
+        return None
     r = _ANALYZER.analyze(df, ticker)
     close = df["close"].astype(float)
     high_20 = float(close.tail(20).max())
     last = float(close.iloc[-1])
+    prev = float(close.iloc[-2])
     off_high = (high_20 - last) / high_20 * 100 if high_20 else 0.0
     vol = float(r.volume_ratio_5d or 0.0)
     rsi6 = float(r.rsi_6 or 50.0)
@@ -41,15 +50,26 @@ def screen_one(df, ticker: str) -> List[Dict]:
     bullish = "多头" in status
     near_high = last >= 0.98 * high_20
 
-    common = {
+    hits: List[str] = []
+    if bullish and near_high and vol >= 2.0:
+        hits.append("breakout")
+    if rsi6 < 15.0:
+        hits.append("oversold")
+
+    return {
         "ticker": ticker, "trend_status": status, "trend_strength": r.trend_strength,
         "signal_score": r.signal_score, "vol_ratio": round(vol, 2),
         "off_20d_high_pct": round(off_high, 1), "rsi6": round(rsi6, 1),
         "entry_close": round(last, 4),
+        "change_pct": round((last - prev) / prev * 100, 2) if prev else 0.0,
+        "hits": hits,
     }
-    hits: List[Dict] = []
-    if bullish and near_high and vol >= 2.0:
-        hits.append({**common, "rule": "breakout"})
-    if rsi6 < 15.0:
-        hits.append({**common, "rule": "oversold"})
-    return hits
+
+
+def screen_one(df, ticker: str) -> List[Dict]:
+    """Return 0..2 nomination dicts for one ticker. Columns must be lowercased OHLCV."""
+    described = describe_one(df, ticker)
+    if described is None:
+        return []
+    common = {k: v for k, v in described.items() if k not in ("hits", "change_pct")}
+    return [{**common, "rule": rule} for rule in described["hits"]]

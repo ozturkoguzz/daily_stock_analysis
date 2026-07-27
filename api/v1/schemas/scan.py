@@ -1,6 +1,30 @@
 from __future__ import annotations
 from typing import Dict, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class ScreenRequest(BaseModel):
+    """Tickers to describe. Capped at the elite watchlist limit."""
+    tickers: List[str] = Field(..., min_length=1, max_length=50)
+
+
+class ScreenRow(BaseModel):
+    """One ticker's measured state. `hits` is empty for a quiet name."""
+    ticker: str
+    trend_status: Optional[str] = None
+    trend_strength: Optional[int] = None
+    signal_score: Optional[int] = None
+    vol_ratio: Optional[float] = None
+    off_20d_high_pct: Optional[float] = None
+    rsi6: Optional[float] = None
+    entry_close: Optional[float] = None
+    change_pct: Optional[float] = None
+    hits: List[str] = Field(default_factory=list)
+
+
+class ScreenResponse(BaseModel):
+    session_date: str
+    rows: List[ScreenRow]
 
 
 class Candidate(BaseModel):
