@@ -2584,6 +2584,33 @@ class SearchService:
         target = max(1, int(max_results))
         return max(target, min(target * cls.NEWS_OVERSAMPLE_FACTOR, cls.NEWS_OVERSAMPLE_MAX))
 
+    @classmethod
+    def _canonical_news_name(cls, stock_code: str, stock_name: str) -> str:
+        """Resolve the name used to build a news query from the ticker, not the caller.
+
+        Callers disagree about what a company is called: the pipeline passes the
+        full legal name ("Marvell Technology, Inc."), the Agent tool passes
+        whatever the model decided to put in the argument ("Marvell Technology
+        insider selling earnings"). Since the name lands in both the query and
+        the cache key, every spelling bought another 2-credit Tavily search for
+        the same news. Resolving from the ticker collapses them onto one.
+
+        Falls back to the supplied name when the code is not a real ticker --
+        market review uses stock_code="market" for several distinct topics.
+        """
+        code = str(stock_code or "").strip()
+        if not code:
+            return stock_name
+        try:
+            from src.data.stock_index_loader import get_stock_name_index_map
+
+            resolved = get_stock_name_index_map().get(code.upper())
+        except Exception:  # index is an optimisation, never a hard dependency
+            resolved = None
+        if not resolved:
+            return stock_name
+        return resolved.title() if resolved.isupper() else resolved
+
     @staticmethod
     def _append_unique(values: List[str], value: Optional[str]) -> None:
         cleaned = (value or "").strip()
@@ -3597,9 +3624,12 @@ class SearchService:
         # 并统一受 NEWS_MAX_AGE_DAYS 上限约束。
         search_days = self._effective_news_window_days()
         provider_max_results = self._provider_request_size(max_results)
+        # Build the query off the ticker's canonical name so that different
+        # callers searching the same stock share one query and one cache entry.
+        query_name = self._canonical_news_name(stock_code, stock_name)
         prefer_chinese = self._should_prefer_chinese_news(
             stock_code,
-            stock_name,
+            query_name,
             focus_keywords=focus_keywords,
         )
 
@@ -3609,13 +3639,13 @@ class SearchService:
             # 如果提供了关键词，直接使用关键词作为查询
             query = " ".join(focus_keywords)
         elif prefer_chinese:
-            query = f"{stock_name} {stock_code} 股票 最新消息"
+            query = f"{query_name} {stock_code} 股票 最新消息"
         elif is_foreign:
             # 港股/美股使用英文搜索关键词
-            query = f"{stock_name} {stock_code} stock latest news"
+            query = f"{query_name} {stock_code} stock latest news"
         else:
             # 默认主查询：股票名称 + 核心关键词
-            query = f"{stock_name} {stock_code} 股票 最新消息"
+            query = f"{query_name} {stock_code} 股票 最新消息"
 
         logger.info(
             (
@@ -3635,7 +3665,7 @@ class SearchService:
 
         cache_key = self._cache_key(
             (
-                f"{query}|target={stock_code}:{stock_name}|"
+                f"{query}|target={stock_code}:{query_name}|"
                 f"news_pref={'zh' if prefer_chinese else 'default'}"
             ),
             max_results,
@@ -4083,9 +4113,22 @@ class SearchService:
             if not available_providers:
                 break
             
-            provider = available_providers[provider_index % len(available_providers)]
-            provider_index += 1
-            
+            # market_analysis / earnings carry the analyst-rating and earnings
+            # intel. Plain round-robin pinned them to whichever engine landed on
+            # their slot, which in practice was always SearXNG -- and SearXNG
+            # fails on essentially every call, so those two dimensions returned
+            # nothing at all. Give them a paid provider and rotate the rest.
+            provider = None
+            if dim['name'] in self.ANALYTICAL_INTEL_DIMENSIONS:
+                provider = next(
+                    (p for p in available_providers
+                     if isinstance(p, TavilySearchProvider)),
+                    None,
+                )
+            if provider is None:
+                provider = available_providers[provider_index % len(available_providers)]
+                provider_index += 1
+
             request_days = (
                 self.ANALYTICAL_INTEL_LOOKBACK_DAYS
                 if dim['name'] in self.ANALYTICAL_INTEL_DIMENSIONS
