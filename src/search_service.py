@@ -3966,6 +3966,93 @@ class SearchService:
             error_message="事件搜索失败"
         )
     
+    ANALYST_INTEL_MAX_RESULTS = 6
+    ANALYST_INTEL_SNIPPET_CHARS = 200
+    # A snippet this dense in digits/pipes is a scraped price table, not prose.
+    ANALYST_INTEL_NOISE_RATIO = 0.55
+
+    @classmethod
+    def _is_scraped_table(cls, text: str) -> bool:
+        if not text:
+            return True
+        junk = sum(1 for c in text if c in "0123456789|.-# \t\n")
+        return junk / len(text) > cls.ANALYST_INTEL_NOISE_RATIO
+
+    def search_analyst_intel(self, stock_code: str, stock_name: str) -> "SearchResponse":
+        """Analyst ratings and earnings context in one paid search.
+
+        Pre-fetched rather than exposed as a tool: no shipped skill declares
+        search_comprehensive_intel, and 28 runs already exhaust their step
+        budget, so a tool call would cost a scarce step and still only *might*
+        fire. One compound query covers both topics -- measured 17 analyst / 16
+        earnings hits out of 20, versus 10 / 9 for three separate queries at
+        three times the cost, because max_results is free and only search_depth
+        bills.
+
+        Deliberately does NOT apply _filter_news_response. These are undated
+        reference pages (0/20 carried a published date); running them through
+        the freshness window drops every one and substitutes unrelated fresh
+        news -- an MRVL query came back with Nvidia, Apple and Modine.
+        """
+        query = (
+            f"{stock_name} {stock_code} analyst rating price target "
+            "earnings revenue guidance outlook"
+        )
+        cache_key = self._cache_key(f"analyst_intel|{stock_code}|{query}", 20, 0)
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            logger.info("[AnalystIntel] cache hit for %s", stock_code)
+            return cached
+
+        empty = SearchResponse(query=query, results=[], provider="None", success=False)
+        provider = next(
+            (p for p in self._providers
+             if isinstance(p, TavilySearchProvider) and p.is_available),
+            None,
+        )
+        if provider is None:
+            return empty
+
+        try:
+            # No `days` and no `topic`: Tavily only honours `days` for
+            # topic="news", and that mode also strips these reference pages.
+            response = provider.search(query, max_results=20)
+        except Exception as exc:
+            logger.warning("[AnalystIntel] search failed for %s: %s", stock_code, exc)
+            return empty
+        if not response.success or not response.results:
+            return empty
+
+        ranked = self._rank_news_response(
+            response,
+            stock_code=stock_code,
+            stock_name=stock_name,
+            max_results=20,
+            prefer_chinese=False,
+            log_scope=f"{stock_code}:AnalystIntel",
+        )
+
+        seen, kept = set(), []
+        for item in (ranked.results or []):
+            if not item.url or item.url in seen:
+                continue
+            seen.add(item.url)
+            snippet = (item.snippet or "").replace("\n", " ").strip()
+            snippet = "" if self._is_scraped_table(snippet) else snippet[
+                : self.ANALYST_INTEL_SNIPPET_CHARS]
+            kept.append(SearchResult(
+                title=item.title, snippet=snippet, url=item.url,
+                source=item.source, published_date=item.published_date,
+            ))
+            if len(kept) >= self.ANALYST_INTEL_MAX_RESULTS:
+                break
+
+        result = SearchResponse(query=query, results=kept,
+                                provider=response.provider, success=True)
+        self._put_cache(cache_key, result)
+        logger.info("[AnalystIntel] %s: %d item(s) from 1 search", stock_code, len(kept))
+        return result
+
     def search_comprehensive_intel(
         self,
         stock_code: str,
@@ -4551,3 +4638,26 @@ if __name__ == "__main__":
         print("\n" + response.to_context())
     else:
         print("未配置搜索能力，跳过测试")
+
+
+def format_analyst_intel_block(response: "SearchResponse", stock_name: str) -> str:
+    """Render pre-fetched analyst/earnings intel for the agent's news_context.
+
+    Labelled as undated on purpose: these are reference pages (Yahoo quote,
+    WSJ estimates), not dated articles -- 0/20 carried a published date. They
+    carry current consensus, which is the value, but the block must not imply
+    a freshness it cannot evidence.
+    """
+    if not response or not getattr(response, "results", None):
+        return ""
+
+    retrieved = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    lines = [
+        f"【{stock_name} — analyst ratings & earnings reference】",
+        f"(undated reference sources, retrieved {retrieved})",
+    ]
+    for item in response.results:
+        source = f" | {item.source}" if item.source else ""
+        snippet = f" | {item.snippet}" if item.snippet else ""
+        lines.append(f"- {item.title}{source}{snippet}")
+    return "\n".join(lines)

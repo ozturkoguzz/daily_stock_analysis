@@ -47,7 +47,7 @@ from src.report_language import (
     localize_trend_prediction,
     normalize_report_language,
 )
-from src.search_service import SearchService
+from src.search_service import SearchService, format_analyst_intel_block
 from src.analysis_context_pack_prompt import format_analysis_context_pack_prompt_section
 from src.analysis_context_pack_overview import render_analysis_context_pack_overview
 from src.market_phase_summary import MARKET_PHASE_SUMMARY_KEY, render_market_phase_summary
@@ -1359,6 +1359,40 @@ class StockAnalysisPipeline:
                         logger.info(f"[{code}] Agent mode: social sentiment data injected into news_context")
                 except Exception as e:
                     logger.warning(f"[{code}] Agent mode: social sentiment fetch failed: {e}")
+
+            # Analyst ratings and earnings, pre-fetched. No shipped skill
+            # declares search_comprehensive_intel, so the agent could never
+            # reach this material; and with 28 runs already hitting the step
+            # cap, a tool call would spend a scarce step and still only might
+            # fire. One paid search, injected before the agent starts.
+            if (self.search_service is not None
+                    and self.search_service.is_available
+                    and is_us_stock_code(code)):
+                try:
+                    analyst_intel = self.search_service.search_analyst_intel(code, stock_name)
+                    analyst_block = format_analyst_intel_block(analyst_intel, stock_name)
+                    if analyst_block:
+                        existing = initial_context.get("news_context")
+                        initial_context["news_context"] = (
+                            f"{existing}\n\n{analyst_block}" if existing else analyst_block)
+                        try:
+                            self.db.save_news_intel(
+                                code=code,
+                                name=stock_name,
+                                dimension="analyst_earnings",
+                                query=analyst_intel.query,
+                                response=analyst_intel,
+                                query_context=self._build_query_context(query_id=query_id),
+                            )
+                        except Exception as exc:
+                            # Persistence only feeds the report's source list;
+                            # losing it must not lose the analysis.
+                            logger.warning(f"[{code}] analyst intel persist failed: {exc}")
+                        logger.info(
+                            f"[{code}] Agent mode: analyst/earnings intel injected "
+                            f"({len(analyst_intel.results)} items)")
+                except Exception as exc:
+                    logger.warning(f"[{code}] Agent mode: analyst intel fetch failed: {exc}")
 
             persisted_intelligence_context = self._load_persisted_intelligence_context(
                 code=code,
