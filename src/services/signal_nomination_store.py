@@ -23,6 +23,50 @@ def ensure_table(engine) -> None:
                 UNIQUE (session_date, ticker, rule)
             )
         """))
+        # A screened session that nominated nothing writes no nomination rows,
+        # which made "we scanned and found nothing" indistinguishable from "we
+        # never scanned". The board is empty ~43% of sessions, so that was half
+        # the history unprovable. This marker records the screen itself.
+        c.execute(text("""
+            CREATE TABLE IF NOT EXISTS signal_scan_sessions (
+                session_date TEXT PRIMARY KEY,
+                screened_at TEXT NOT NULL,
+                universe_size INTEGER NOT NULL,
+                nomination_count INTEGER NOT NULL
+            )
+        """))
+
+
+def mark_session_screened(engine, session_date: str, universe_size: int,
+                          nomination_count: int) -> None:
+    """Record that the screen ran for this session, nominations or not."""
+    with engine.begin() as c:
+        c.execute(text("""
+            INSERT INTO signal_scan_sessions
+                (session_date, screened_at, universe_size, nomination_count)
+            VALUES (:d, :at, :u, :n)
+            ON CONFLICT(session_date) DO UPDATE SET
+                screened_at=excluded.screened_at,
+                universe_size=excluded.universe_size,
+                nomination_count=excluded.nomination_count
+        """), {"d": session_date, "at": datetime.now(timezone.utc).isoformat(),
+               "u": universe_size, "n": nomination_count})
+
+
+def get_session(engine, session_date: str) -> Optional[Dict]:
+    rows = _rows(engine, "SELECT session_date, screened_at, universe_size, "
+                 "nomination_count FROM signal_scan_sessions WHERE session_date=:d",
+                 {"d": session_date})
+    return rows[0] if rows else None
+
+
+def session_screened(engine, session_date: str) -> bool:
+    """Whether the screen already ran today -- the real daily-cache key.
+
+    Keying the cache on "are there nomination rows" meant an empty session
+    re-downloaded the whole universe on every /signals call.
+    """
+    return get_session(engine, session_date) is not None
 
 
 def persist_nominations(engine, session_date: str, noms: List[Dict]) -> int:

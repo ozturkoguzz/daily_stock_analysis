@@ -117,15 +117,21 @@ def nominate() -> NominateResponse:
 
     # Persistence is the daily cache: if today is already screened, serve it.
     # `history` is captured so past rows can be graded off the same batch download.
+    # Keyed on "was this session screened", not "are there rows". A session
+    # that nominates nothing is a real outcome; keying on rows re-downloaded
+    # the whole universe on every call for the ~43% of sessions that come back
+    # empty, and left no evidence the screen had run at all.
     history: Dict[str, object] = {}
-    existing = store.list_for_date(engine, session_date)
-    if not existing:
+    if not store.session_screened(engine, session_date):
         history = download_history(NDX_100)
         noms: List[dict] = []
         for ticker, df in history.items():
             noms.extend(screen_one(_trim_to_session(df, session_date), ticker))
         store.persist_nominations(engine, session_date, noms)
-        existing = store.list_for_date(engine, session_date)
+        store.mark_session_screened(
+            engine, session_date,
+            universe_size=len(history), nomination_count=len(noms))
+    existing = store.list_for_date(engine, session_date)
 
     store.grade_pending(engine, _price_lookup_factory(history))
 
@@ -145,15 +151,29 @@ def nominate() -> NominateResponse:
 
 
 def _latest_close(ticker: str):
+    """Most recent close, or None.
+
+    yfinance returns MultiIndex columns even for a single ticker, so df["Close"]
+    is a DataFrame and float() on its last row raises TypeError. That exception
+    was being swallowed here, which silently killed the live-return fallback and
+    left every ungraded nomination rendering as "pending". Squeeze to a Series
+    first, and log failures instead of hiding them.
+    """
     import time
     import yfinance as yf
-    for _ in range(2):  # yfinance single-ticker calls are flaky after a batch; retry once
+    for attempt in range(2):  # single-ticker calls are flaky right after a batch
         try:
             df = yf.download(ticker, period="5d", interval="1d", progress=False, auto_adjust=True)
             if len(df):
-                return float(df["Close"].dropna().iloc[-1])
-        except Exception:
-            pass
+                close = df["Close"]
+                if hasattr(close, "columns"):  # MultiIndex: one column per ticker
+                    close = close.iloc[:, 0]
+                value = close.dropna()
+                if len(value):
+                    return float(value.iloc[-1])
+        except Exception as exc:
+            logger.warning("latest close for %s failed (attempt %d): %s",
+                           ticker, attempt + 1, exc)
         time.sleep(0.4)
     return None
 
