@@ -26,6 +26,7 @@ from src.agent.llm_adapter import LLMToolAdapter
 from src.agent.provider_trace import extract_provider_trace_turns
 from src.agent.runner import run_agent_loop, parse_dashboard_json
 from src.agent.stock_scope import StockScope, resolve_stock_scope
+from src.agent.tools.market_scope import market_for_code
 from src.storage import get_db
 from src.agent.tools.registry import ToolRegistry
 from src.report_language import normalize_report_language
@@ -561,7 +562,13 @@ class AgentExecutor:
             {"role": "user", "content": self._build_user_message(task, context)},
         ]
 
-        return self._run_loop(messages, tool_decls, parse_dashboard=True)
+        # `market` only selects which tools have data for this exchange. It is
+        # deliberately NOT a stock_scope: a scope also *enforces* which stock a
+        # tool may be called with, and the dashboard path intentionally leaves
+        # that unrestricted.
+        return self._run_loop(
+            messages, tool_decls, parse_dashboard=True,
+            market=market_for_code(stock_code))
 
     def chat(self, message: str, session_id: str, progress_callback: Optional[Callable] = None, context: Optional[Dict[str, Any]] = None) -> AgentResult:
         """Execute the agent loop for a free-form chat message.
@@ -767,6 +774,7 @@ class AgentExecutor:
         parse_dashboard: bool,
         progress_callback: Optional[Callable] = None,
         stock_scope: Optional[StockScope] = None,
+        market: Optional[str] = None,
     ) -> AgentResult:
         """Delegate to the shared runner and adapt the result.
 
@@ -782,6 +790,7 @@ class AgentExecutor:
             progress_callback=progress_callback,
             max_wall_clock_seconds=self.timeout_seconds,
             stock_scope=stock_scope,
+            market=market,
         )
 
         model_str = loop_result.model

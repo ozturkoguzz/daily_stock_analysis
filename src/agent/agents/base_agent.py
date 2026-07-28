@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional
 from src.agent.llm_adapter import LLMToolAdapter
 from src.agent.memory import AgentMemory
 from src.agent.protocols import AgentContext, AgentOpinion, StageResult, StageStatus
+from src.agent.tools.market_scope import market_for_code
 from src.agent.runner import RunLoopResult, run_agent_loop
 from src.agent.skills.defaults import extract_skill_id
 from src.agent.tools.registry import ToolRegistry
@@ -122,6 +123,7 @@ class BaseAgent(ABC):
                 progress_callback=progress_callback,
                 max_wall_clock_seconds=timeout_seconds,
                 stock_scope=ctx.meta.get("stock_scope"),
+                market=market_for_code(getattr(ctx, "stock_code", "")),
                 emit_stage_events=False,
             )
 

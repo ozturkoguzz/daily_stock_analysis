@@ -137,3 +137,56 @@ class TestRunLoopWithholdsCnOnlyToolsFromUsRuns(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAnalysisPathSuppliesAScope(unittest.TestCase):
+    """The analysis path -- not just chat -- must scope its tools.
+
+    Regression: the filter was first wired to `stock_scope`, which only the
+    chat path populated. Analyses ran with scope=None, the filter failed open,
+    and A-share-only tools were still offered on every US report.
+    """
+
+    def test_run_passes_the_market_not_a_fabricated_scope(self) -> None:
+        from unittest.mock import MagicMock, patch
+        from src.agent.executor import AgentExecutor
+
+        ex = AgentExecutor.__new__(AgentExecutor)
+        ex.skill_instructions = ""
+        ex.default_skill_policy = ""
+        ex.use_legacy_default_prompt = False
+        ex.tool_registry = MagicMock()
+        ex.tool_registry.to_openai_tools.return_value = []
+
+        seen = {}
+
+        def fake_run_loop(messages, tool_decls, parse_dashboard=False, **kw):
+            seen["scope"] = kw.get("stock_scope")
+            seen["market"] = kw.get("market")
+            return MagicMock(success=True, content="{}")
+
+        with patch.object(AgentExecutor, "_run_loop", side_effect=fake_run_loop), \
+                patch.object(AgentExecutor, "_build_user_message", return_value="u"):
+            try:
+                ex.run("task", context={"stock_code": "AAPL"})
+            except Exception:
+                pass
+
+        self.assertEqual(seen.get("market"), "us")
+        # A stock_scope also ENFORCES which stock a tool may be called with.
+        # The dashboard path deliberately leaves that unrestricted, so market
+        # must travel as its own signal rather than as a fabricated scope.
+        self.assertIsNone(seen.get("scope"))
+
+class TestBaseAgentPassesMarket(unittest.TestCase):
+    """Specialist mode is the production path; it must carry the market."""
+
+    def test_market_is_derived_from_the_context_stock_code(self) -> None:
+        from src.agent.tools.market_scope import market_for_code
+        self.assertEqual(market_for_code("AAPL"), "us")
+        self.assertEqual(market_for_code("600519"), "cn")
+        self.assertIsNone(market_for_code(""))
+
+
+if __name__ == "__main__":
+    unittest.main()

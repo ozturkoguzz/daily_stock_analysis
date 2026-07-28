@@ -34,6 +34,20 @@ CN_ONLY_TOOLS = {
 }
 
 
+def market_for_code(code: Any) -> Optional[str]:
+    """Resolve the market of a single stock code, or None if unrecognised."""
+    text = str(code or "").strip()
+    if not text:
+        return None
+    try:
+        from data_provider.base import normalize_stock_code
+        from src.core.trading_calendar import get_market_for_stock
+
+        return get_market_for_stock(normalize_stock_code(text))
+    except Exception:
+        return None
+
+
 def market_for_scope(stock_scope: Any) -> Optional[str]:
     """Resolve the single market a run is scoped to, or None if not decidable.
 

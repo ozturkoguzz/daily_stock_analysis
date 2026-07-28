@@ -314,14 +314,21 @@ def _build_budget_guard_result(
 # Core loop
 # ============================================================
 
-def _decls_for_scope(tool_registry: ToolRegistry, stock_scope: Any) -> List[dict]:
-    """OpenAI tool declarations, minus tools with no data for this market."""
+def _decls_for_market(
+    tool_registry: ToolRegistry, market: Optional[str], stock_scope: Any
+) -> List[dict]:
+    """OpenAI tool declarations, minus tools with no data for this market.
+
+    `market` is the explicit signal. `stock_scope` is only a fallback for
+    callers that already carry one -- it is an access-control contract, not a
+    market one, so it must never be fabricated just to reach this filter.
+    """
     from src.agent.tools.market_scope import market_for_scope, tools_for_market
 
-    market = market_for_scope(stock_scope)
-    if market is None:
+    resolved = market or market_for_scope(stock_scope)
+    if resolved is None:
         return tool_registry.to_openai_tools()
-    kept = tools_for_market(tool_registry.list_tools(), market)
+    kept = tools_for_market(tool_registry.list_tools(), resolved)
     return [t.to_openai_tool() for t in kept]
 
 
@@ -336,6 +343,7 @@ def run_agent_loop(
     max_wall_clock_seconds: Optional[float] = None,
     tool_call_timeout_seconds: Optional[float] = None,
     stock_scope: Optional[StockScope] = None,
+    market: Optional[str] = None,
     emit_stage_events: bool = True,
 ) -> RunLoopResult:
     """Execute the ReAct LLM ↔ tool loop.
@@ -366,7 +374,7 @@ def run_agent_loop(
     # Withhold tools that have no data source for this run's market. An
     # A-share-only tool offered on a US ticker cannot succeed, but the model
     # still spends a step discovering that, and the step budget is scarce.
-    tool_decls = _decls_for_scope(tool_registry, stock_scope)
+    tool_decls = _decls_for_market(tool_registry, market, stock_scope)
 
     start_time = time.time()
     tool_calls_log: List[Dict[str, Any]] = []

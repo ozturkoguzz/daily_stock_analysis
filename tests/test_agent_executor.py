@@ -348,15 +348,21 @@ class TestAgentExecutor(unittest.TestCase):
         executor = AgentExecutor(registry, adapter, max_steps=2)
         captured = {}
 
-        def fake_run_loop(messages, tool_decls, parse_dashboard, progress_callback=None, stock_scope=None):
+        def fake_run_loop(messages, tool_decls, parse_dashboard, progress_callback=None,
+                          stock_scope=None, market=None):
             captured["stock_scope"] = stock_scope
+            captured["market"] = market
             return AgentResult(success=True, content=json.dumps(SAMPLE_DASHBOARD, ensure_ascii=False))
 
         with patch.object(executor, "_run_loop", side_effect=fake_run_loop):
             result = executor.run("Analyze 600519", context={"stock_code": "600519"})
 
         self.assertTrue(result.success)
+        # Still no scope: a scope enforces which stock a tool may be called
+        # with, and the dashboard path intentionally leaves that open. Market
+        # capability travels separately.
         self.assertIsNone(captured["stock_scope"])
+        self.assertEqual(captured["market"], "cn")
 
     def test_resolve_stock_scope_compare_collects_multiple_normalized_codes(self):
         result = resolve_stock_scope(

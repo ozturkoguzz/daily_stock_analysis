@@ -1451,9 +1451,23 @@ class StockAnalysisPipeline:
             )
             if result:
                 result.query_id = query_id
-            # Agent weak integrity: placeholder fill only, no LLM retry
+            # Agent weak integrity: fill what the run already knows, then
+            # placeholder-fill whatever is genuinely the model's to answer.
+            # phase_context is the dict build_market_phase_context() produced
+            # earlier in this same run, and data_limitations is run state, so
+            # neither should be reported as "model did not provide".
             if result and getattr(self.config, "report_integrity_enabled", False):
                 from src.analyzer import check_content_integrity, apply_placeholder_fill
+                from src.services.phase_decision_fill import fill_known_phase_decision_fields
+
+                try:
+                    fill_known_phase_decision_fields(
+                        result,
+                        market_phase_summary if isinstance(market_phase_summary, dict) else None,
+                        has_news=bool(initial_context.get("news_context")),
+                    )
+                except Exception:  # never let a completeness aid break a report
+                    logger.warning("[PhaseDecision] run-state fill failed", exc_info=True)
 
                 pass_integrity, missing = check_content_integrity(
                     result,
