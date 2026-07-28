@@ -314,6 +314,17 @@ def _build_budget_guard_result(
 # Core loop
 # ============================================================
 
+def _decls_for_scope(tool_registry: ToolRegistry, stock_scope: Any) -> List[dict]:
+    """OpenAI tool declarations, minus tools with no data for this market."""
+    from src.agent.tools.market_scope import market_for_scope, tools_for_market
+
+    market = market_for_scope(stock_scope)
+    if market is None:
+        return tool_registry.to_openai_tools()
+    kept = tools_for_market(tool_registry.list_tools(), market)
+    return [t.to_openai_tool() for t in kept]
+
+
 def run_agent_loop(
     *,
     messages: List[Dict[str, Any]],
@@ -352,7 +363,10 @@ def run_agent_loop(
         (mutated) messages list.
     """
     labels = thinking_labels or _THINKING_TOOL_LABELS
-    tool_decls = tool_registry.to_openai_tools()
+    # Withhold tools that have no data source for this run's market. An
+    # A-share-only tool offered on a US ticker cannot succeed, but the model
+    # still spends a step discovering that, and the step budget is scarce.
+    tool_decls = _decls_for_scope(tool_registry, stock_scope)
 
     start_time = time.time()
     tool_calls_log: List[Dict[str, Any]] = []
