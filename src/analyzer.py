@@ -1097,9 +1097,21 @@ def stabilize_decision_with_structure(
         )
 
         flow_bias, flow_reason = _capital_flow_bias_with_status(fundamental_context)
+        # Capital flow is A-share-only data. Its absence is a genuine red flag
+        # for a CN stock, but for a US stock it is simply never available, so
+        # downgrading a US buy for lacking it means a US stock can never be a
+        # buy. That gate fired on 16 US runs and is the mechanical reason every
+        # US /analyze returned watch/hold. For US, flow is not-applicable, not
+        # a warning -- keep the call and annotate rather than downgrade.
+        _is_us = False
+        try:
+            from data_provider.us_index_mapping import is_us_stock_code
+            _is_us = is_us_stock_code(str(getattr(result, "code", "") or ""))
+        except Exception:
+            _is_us = False
         if flow_bias == "unavailable":
             if isinstance(fundamental_context, dict) and "capital_flow" in fundamental_context:
-                if decision_type == "buy" or advice_decision_type == "buy":
+                if not _is_us and (decision_type == "buy" or advice_decision_type == "buy"):
                     _downgrade_buy_without_capital_flow(
                         result,
                         language,
