@@ -50,6 +50,23 @@ def _handle_analyze_trend(stock_code: str) -> dict:
         logger.warning("analyze_trend(%s): Trend analysis failed", stock_code, exc_info=True)
         return {"error": f"Trend analysis failed for {stock_code}"}
 
+    # ATR is the volatility unit a stop has to clear. Nothing upstream computes
+    # it -- not StockTrendAnalyzer, not any other tool -- so the model has been
+    # placing stops with no sense of a normal day's range. Measured result:
+    # stops at 0.27-0.54x ATR, i.e. inside ordinary noise.
+    atr_14 = None
+    atr_pct = None
+    try:
+        span = (df["high"].astype(float) - df["low"].astype(float)).tail(14)
+        if len(span) >= 14:
+            atr_14 = float(span.mean())
+            last_close = float(df["close"].astype(float).iloc[-1])
+            if last_close:
+                atr_pct = round(atr_14 / last_close * 100, 2)
+            atr_14 = round(atr_14, 4)
+    except Exception:
+        logger.warning("analyze_trend(%s): ATR computation failed", stock_code, exc_info=True)
+
     return {
         "code": result.code,
         "trend_status": result.trend_status.value,
@@ -78,6 +95,8 @@ def _handle_analyze_trend(stock_code: str) -> dict:
         "rsi_6": round(result.rsi_6, 2),
         "rsi_12": round(result.rsi_12, 2),
         "rsi_24": round(result.rsi_24, 2),
+        "atr_14": atr_14,
+        "atr_pct": atr_pct,
         "rsi_status": result.rsi_status.value,
         "rsi_signal": result.rsi_signal,
         "buy_signal": result.buy_signal.value,
