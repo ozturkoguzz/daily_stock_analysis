@@ -21,6 +21,11 @@ from src.agent.skills.defaults import (
 
 logger = logging.getLogger(__name__)
 
+# Distance from the 20-day mean, in percent, at which measured price position
+# overrides the model's own trend label. Chosen so ordinary chop stays
+# `sideways` while a genuine breakout cannot be filed as directionless.
+_BIAS_OVERRIDE_PCT = 5.0
+
 
 class SkillRouter:
     """Select applicable skills for a given analysis context."""
@@ -84,6 +89,24 @@ class SkillRouter:
             except (TypeError, ValueError):
                 trend_score = 50.0
             volume_status = str(raw.get("volume_status", "")).lower()
+
+            # Measured position beats self-assessment. ma_alignment and
+            # trend_score are written by the technical agent about its own
+            # read; bias_ma20 is computed from price. When price sits far from
+            # its 20-day mean, that is the fact, whatever the label says.
+            # GEHC (2026-07-30) was +12.5% above MA20 at its 20-day high and
+            # still routed `sideways`, landing a textbook breakout on the
+            # documented no-edge stand-aside skill.
+            try:
+                bias_ma20 = float(raw.get("bias_ma20"))
+            except (TypeError, ValueError):
+                bias_ma20 = None
+            if bias_ma20 is not None and abs(bias_ma20) >= _BIAS_OVERRIDE_PCT:
+                decided = "trending_up" if bias_ma20 > 0 else "trending_down"
+                logger.info(
+                    "[SkillRouter] bias_ma20=%.1f%% overrides ma_alignment=%r -> %s",
+                    bias_ma20, ma_alignment, decided)
+                return decided
 
             if ma_alignment == "bullish" and trend_score >= 70:
                 return "trending_up"
