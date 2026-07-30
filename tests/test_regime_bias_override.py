@@ -40,3 +40,31 @@ def test_missing_bias_falls_back_to_the_label():
 def test_bias_does_not_fight_an_agreeing_label():
     ctx = _ctx(ma_alignment="bullish", trend_score=75, bias_ma20=12.5)
     assert SkillRouter()._detect_regime(ctx) == "trending_up"
+
+
+def test_bias_is_measured_from_the_tool_when_the_opinion_omits_it():
+    """The technical agent's JSON carries no bias_ma20 -- its schema is
+    signal/confidence/reasoning/key_levels/trend_score/ma_alignment/
+    volume_status/pattern. The first implementation read a key that is never
+    written, so the override never fired in production."""
+    from unittest.mock import patch
+
+    ctx = SimpleNamespace(
+        opinions=[SimpleNamespace(agent_name="technical",
+                                  raw_data={"ma_alignment": "neutral", "trend_score": 50})],
+        meta={}, stock_code="GEHC")
+    with patch("src.agent.tools.analysis_tools._handle_analyze_trend",
+               return_value={"bias_ma20": 12.47}):
+        assert SkillRouter()._detect_regime(ctx) == "trending_up"
+
+
+def test_tool_failure_falls_back_to_the_label():
+    from unittest.mock import patch
+
+    ctx = SimpleNamespace(
+        opinions=[SimpleNamespace(agent_name="technical",
+                                  raw_data={"ma_alignment": "neutral", "trend_score": 50})],
+        meta={}, stock_code="GEHC")
+    with patch("src.agent.tools.analysis_tools._handle_analyze_trend",
+               side_effect=RuntimeError("network")):
+        assert SkillRouter()._detect_regime(ctx) == "sideways"

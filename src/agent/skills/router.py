@@ -27,6 +27,32 @@ logger = logging.getLogger(__name__)
 _BIAS_OVERRIDE_PCT = 5.0
 
 
+def _measured_bias_ma20(raw: dict, stock_code: str):
+    """Price distance from MA20 in percent, measured -- never self-reported.
+
+    The technical agent's opinion JSON carries signal/confidence/trend_score/
+    ma_alignment and nothing else, so bias_ma20 is not in `raw` despite
+    analyze_trend computing it. Fall back to the tool, which is pure Python
+    with no LLM call. Returns None when it cannot be established, in which
+    case the caller keeps the existing label-based logic.
+    """
+    try:
+        return float(raw["bias_ma20"])
+    except (KeyError, TypeError, ValueError):
+        pass
+    if not stock_code:
+        return None
+    try:
+        from src.agent.tools.analysis_tools import _handle_analyze_trend
+
+        value = _handle_analyze_trend(str(stock_code)).get("bias_ma20")
+        return None if value is None else float(value)
+    except Exception:
+        logger.warning("[SkillRouter] bias_ma20 lookup failed for %s",
+                       stock_code, exc_info=True)
+        return None
+
+
 class SkillRouter:
     """Select applicable skills for a given analysis context."""
 
@@ -97,10 +123,7 @@ class SkillRouter:
             # GEHC (2026-07-30) was +12.5% above MA20 at its 20-day high and
             # still routed `sideways`, landing a textbook breakout on the
             # documented no-edge stand-aside skill.
-            try:
-                bias_ma20 = float(raw.get("bias_ma20"))
-            except (TypeError, ValueError):
-                bias_ma20 = None
+            bias_ma20 = _measured_bias_ma20(raw, getattr(ctx, "stock_code", ""))
             if bias_ma20 is not None and abs(bias_ma20) >= _BIAS_OVERRIDE_PCT:
                 decided = "trending_up" if bias_ma20 > 0 else "trending_down"
                 logger.info(
